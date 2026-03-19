@@ -3,6 +3,8 @@ import React from "react";
 interface ConfirmDialogProps {
   title: string;
   message: string;
+  confirmLabel?: string;
+  tone?: "danger" | "primary";
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -10,6 +12,8 @@ interface ConfirmDialogProps {
 const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   title,
   message,
+  confirmLabel = "确认",
+  tone = "danger",
   onConfirm,
   onCancel,
 }) => (
@@ -20,8 +24,12 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     aria-labelledby="confirm-dialog-title"
   >
     <div className="w-full max-w-md rounded-[28px] border border-white/70 bg-white p-8 shadow-[0_28px_80px_-35px_rgba(15,23,42,0.5)]">
-      <p className="text-sm font-semibold uppercase tracking-[0.3em] text-red-500/80">
-        Danger Zone
+      <p
+        className={`text-sm font-semibold uppercase tracking-[0.3em] ${
+          tone === "danger" ? "text-red-500/80" : "text-indigo-500/80"
+        }`}
+      >
+        {tone === "danger" ? "Danger Zone" : "Please Confirm"}
       </p>
       <h2
         id="confirm-dialog-title"
@@ -39,9 +47,13 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         </button>
         <button
           onClick={onConfirm}
-          className="rounded-2xl bg-red-500 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-red-600"
+          className={`rounded-2xl px-4 py-3 text-sm font-medium text-white transition-colors ${
+            tone === "danger"
+              ? "bg-red-500 hover:bg-red-600"
+              : "bg-indigo-600 hover:bg-indigo-700"
+          }`}
         >
-          确认删除
+          {confirmLabel}
         </button>
       </div>
     </div>

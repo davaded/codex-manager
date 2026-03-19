@@ -1,10 +1,12 @@
+use chrono::{TimeZone, Utc};
+use serde_json::Value;
 use std::path::PathBuf;
 use tauri::AppHandle;
 use tokio::fs;
 use uuid::Uuid;
 
 use crate::commands::paths::{app_data_dir, home_codex_dir};
-use crate::models::{AppSettings, AccountsStore};
+use crate::models::{AccountsStore, AppSettings};
 
 /// Validates that account_id is a well-formed UUID to prevent path traversal.
 fn validate_uuid(account_id: &str) -> Result<String, String> {
@@ -34,9 +36,72 @@ fn auth_json_path() -> Result<PathBuf, String> {
     home_codex_dir().map(|d| d.join("auth.json"))
 }
 
+fn format_last_refresh(value: i64) -> Option<String> {
+    let dt = if value > 1_000_000_000_000 {
+        Utc.timestamp_millis_opt(value).single()
+    } else {
+        Utc.timestamp_opt(value, 0).single()
+    }?;
+    Some(dt.to_rfc3339())
+}
+
+fn normalize_auth_json_content(content: &str) -> Result<(String, bool), String> {
+    let mut value: Value = serde_json::from_str(content).map_err(|e| e.to_string())?;
+    let Some(object) = value.as_object_mut() else {
+        return Ok((content.to_string(), false));
+    };
+
+    let mut changed = false;
+    if let Some(last_refresh) = object.get_mut("last_refresh") {
+        match last_refresh {
+            Value::Number(number) => {
+                if let Some(raw) = number.as_i64().and_then(format_last_refresh) {
+                    *last_refresh = Value::String(raw);
+                    changed = true;
+                }
+            }
+            Value::String(text) => {
+                if let Ok(number) = text.parse::<i64>() {
+                    if let Some(raw) = format_last_refresh(number) {
+                        *last_refresh = Value::String(raw);
+                        changed = true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !changed {
+        return Ok((content.to_string(), false));
+    }
+
+    serde_json::to_string_pretty(&value)
+        .map(|normalized| (normalized, true))
+        .map_err(|e| e.to_string())
+}
+
+async fn read_auth_file_normalized(path: &PathBuf) -> Result<String, String> {
+    let content = fs::read_to_string(path).await.map_err(|e| e.to_string())?;
+    let (normalized, changed) = normalize_auth_json_content(&content)?;
+    if changed {
+        fs::write(path, &normalized)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(normalized)
+}
+
+async fn write_auth_file_normalized(path: &PathBuf, content: String) -> Result<(), String> {
+    let (normalized, _) = normalize_auth_json_content(&content)?;
+    ensure_dir(&path.parent().unwrap().to_path_buf()).await?;
+    fs::write(path, normalized).await.map_err(|e| e.to_string())
+}
+
 fn default_settings() -> AppSettings {
     AppSettings {
         auto_refresh_interval: 0,
+        auto_restart_codex_after_switch: true,
         theme: "system".to_string(),
         proxy_url: String::new(),
     }
@@ -88,14 +153,13 @@ pub async fn read_auth_json() -> Result<String, String> {
     if !path.exists() {
         return Err("~/.codex/auth.json not found".to_string());
     }
-    fs::read_to_string(&path).await.map_err(|e| e.to_string())
+    read_auth_file_normalized(&path).await
 }
 
 #[tauri::command]
 pub async fn write_auth_json(content: String) -> Result<(), String> {
     let path = auth_json_path()?;
-    ensure_dir(&path.parent().unwrap().to_path_buf()).await?;
-    fs::write(&path, content).await.map_err(|e| e.to_string())
+    write_auth_file_normalized(&path, content).await
 }
 
 #[tauri::command]
@@ -105,8 +169,7 @@ pub async fn save_account_credentials(
     content: String,
 ) -> Result<(), String> {
     let path = credentials_path(&app, &account_id)?;
-    ensure_dir(&path.parent().unwrap().to_path_buf()).await?;
-    fs::write(&path, content).await.map_err(|e| e.to_string())
+    write_auth_file_normalized(&path, content).await
 }
 
 #[tauri::command]
@@ -115,16 +178,14 @@ pub async fn read_account_credentials(
     account_id: String,
 ) -> Result<String, String> {
     let path = credentials_path(&app, &account_id)?;
-    fs::read_to_string(&path)
-        .await
-        .map_err(|_| format!("Credentials not found for account {}", account_id))
+    if !path.exists() {
+        return Err(format!("Credentials not found for account {}", account_id));
+    }
+    read_auth_file_normalized(&path).await
 }
 
 #[tauri::command]
-pub async fn delete_account_credentials(
-    app: AppHandle,
-    account_id: String,
-) -> Result<(), String> {
+pub async fn delete_account_credentials(app: AppHandle, account_id: String) -> Result<(), String> {
     let path = credentials_path(&app, &account_id)?;
     if path.exists() {
         fs::remove_file(&path).await.map_err(|e| e.to_string())?;

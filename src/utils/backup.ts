@@ -92,6 +92,10 @@ export async function importBackupBundle(
         typeof parsed.settings.autoRefreshInterval === "number"
           ? parsed.settings.autoRefreshInterval
           : 0,
+      autoRestartCodexAfterSwitch:
+        typeof parsed.settings.autoRestartCodexAfterSwitch === "boolean"
+          ? parsed.settings.autoRestartCodexAfterSwitch
+          : true,
       theme:
         parsed.settings.theme === "light" ||
         parsed.settings.theme === "dark" ||

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import Header from "./components/Header";
 import AccountList from "./components/AccountList";
+import TrayPanel from "./components/TrayPanel";
 import SwitchProgress from "./components/SwitchProgress";
 import AddAccountModal from "./components/AddAccountModal";
 import SettingsModal from "./components/SettingsModal";
@@ -10,6 +12,15 @@ import { useAccountStore } from "./store/accountStore";
 import { api } from "./utils/invoke";
 import { hydrateAccounts } from "./utils/accounts";
 import { importBackupBundle } from "./utils/backup";
+import { findAccountForAuth, parseAuthIdentity } from "./utils/auth";
+import { getBestQuotaAccount } from "./utils/dashboard";
+import { useAccountSwitch } from "./hooks/useAccountSwitch";
+import { Account } from "./types";
+
+type ConfirmState =
+  | { kind: "delete"; accountId: string }
+  | { kind: "switch"; account: Account }
+  | null;
 
 const App: React.FC = () => {
   const {
@@ -23,12 +34,42 @@ const App: React.FC = () => {
     showToast,
     settings,
   } = useAccountStore();
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const { switchAccount } = useAccountSwitch();
+  const [confirmState, setConfirmState] = useState<ConfirmState>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshingAccountIds, setRefreshingAccountIds] = useState<string[]>([]);
+  const [isImportingCurrentAuth, setIsImportingCurrentAuth] = useState(false);
+  const [isSmartSwitching, setIsSmartSwitching] = useState(false);
+  const [resumingSessionId, setResumingSessionId] = useState<string | null>(null);
   const refreshingRef = useRef(false);
   const settingsLoadedRef = useRef(false);
   const lastSavedSettingsRef = useRef<string | null>(null);
+  const isTrayMode =
+    typeof window !== "undefined" &&
+    (new URLSearchParams(window.location.search).get("tray") === "1" ||
+      window.location.hash === "#tray");
+
+  const executeSwitch = async (account: Account) => {
+    await switchAccount(account);
+  };
+
+  const requestSwitch = async (account: Account) => {
+    if (account.isActive) {
+      return;
+    }
+
+    if (settings.autoRestartCodexAfterSwitch) {
+      setConfirmState({ kind: "switch", account });
+      return;
+    }
+
+    await executeSwitch(account);
+  };
+
+  const persistAccounts = async (nextAccounts: Account[]) => {
+    setAccounts(nextAccounts);
+    await api.saveAccounts({ version: "1.0", accounts: nextAccounts });
+  };
 
   const refreshAccounts = async (silent = false) => {
     if (refreshingRef.current) return;
@@ -102,6 +143,89 @@ const App: React.FC = () => {
     }
   };
 
+  const handleImportCurrentAuth = async () => {
+    if (isImportingCurrentAuth) {
+      return;
+    }
+
+    setIsImportingCurrentAuth(true);
+    try {
+      const currentAuth = await api.readAuthJson();
+      const identity = parseAuthIdentity(currentAuth);
+      if (!identity.email && !identity.userId && !identity.accountId) {
+        throw new Error("当前 auth.json 中未识别到可导入的账号身份");
+      }
+
+      const existingAccount = await findAccountForAuth(accounts, currentAuth);
+      let nextAccounts: Account[];
+
+      if (existingAccount) {
+        await api.saveAccountCredentials(existingAccount.id, currentAuth);
+        nextAccounts = accounts.map((account) =>
+          account.id === existingAccount.id
+            ? {
+                ...account,
+                email: identity.email ?? account.email,
+                userId: identity.userId ?? account.userId,
+              }
+            : account,
+        );
+      } else {
+        const importedAccount: Account = {
+          id: uuidv4(),
+          displayName:
+            identity.email?.split("@")[0] ??
+            identity.userId ??
+            `导入账户 ${accounts.length + 1}`,
+          email: identity.email,
+          userId: identity.userId,
+          isActive: false,
+          createdAt: new Date().toISOString(),
+          lastSwitchedAt: null,
+          sessionInfo: null,
+        };
+
+        await api.saveAccountCredentials(importedAccount.id, currentAuth);
+        nextAccounts = [...accounts, importedAccount];
+      }
+
+      const hydrated = await hydrateAccounts(nextAccounts);
+      await persistAccounts(hydrated);
+      showToast(existingAccount ? "当前授权已更新到现有账户" : "当前授权已导入");
+    } catch (error) {
+      showToast(`导入当前授权失败: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsImportingCurrentAuth(false);
+    }
+  };
+
+  const handleSmartSwitch = async () => {
+    if (isSmartSwitching) {
+      return;
+    }
+
+    setIsSmartSwitching(true);
+    try {
+      const hydrated = await hydrateAccounts(accounts);
+      await persistAccounts(hydrated);
+
+      const bestAccount = getBestQuotaAccount(hydrated);
+      if (!bestAccount) {
+        throw new Error("没有可用于智能切换的真实配额数据");
+      }
+      if (bestAccount.isActive) {
+        showToast(`当前账号 ${bestAccount.displayName} 已是最佳选择`);
+        return;
+      }
+
+      await requestSwitch(bestAccount);
+    } catch (error) {
+      showToast(`智能切换失败: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsSmartSwitching(false);
+    }
+  };
+
   useEffect(() => {
     api.loadSettings().then((loadedSettings) => {
       setSettings(loadedSettings);
@@ -161,7 +285,8 @@ const App: React.FC = () => {
   }, [settings, setSettingsSaveState, showToast]);
 
   const handleDelete = async () => {
-    if (!deleteId) return;
+    if (confirmState?.kind !== "delete") return;
+    const deleteId = confirmState.accountId;
     try {
       await api.deleteAccountCredentials(deleteId);
       await api.deleteAccountSessions(deleteId);
@@ -172,8 +297,18 @@ const App: React.FC = () => {
     } catch (err: unknown) {
       showToast(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      setDeleteId(null);
+      setConfirmState(null);
     }
+  };
+
+  const handleConfirmSwitch = async () => {
+    if (confirmState?.kind !== "switch") {
+      return;
+    }
+
+    const targetAccount = confirmState.account;
+    setConfirmState(null);
+    await executeSwitch(targetAccount);
   };
 
   const handleImportConfig = async (file: File) => {
@@ -209,29 +344,99 @@ const App: React.FC = () => {
     }
   };
 
+  const handleResumeSession = async (sessionId: string) => {
+    if (!sessionId || resumingSessionId === sessionId) {
+      return;
+    }
+
+    setResumingSessionId(sessionId);
+    try {
+      await api.resumeSessionInTerminal(sessionId);
+      showToast(`已在新终端中恢复会话 ${sessionId.slice(0, 8)}`);
+    } catch (error) {
+      const command = `codex resume ${sessionId}`;
+      try {
+        await navigator.clipboard.writeText(command);
+        showToast(
+          `自动拉起失败，已复制恢复命令: ${command}`,
+        );
+      } catch {
+        showToast(
+          `自动拉起失败，请手动执行: ${command} (${
+            error instanceof Error ? error.message : String(error)
+          })`,
+        );
+      }
+    } finally {
+      setResumingSessionId(null);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex flex-col bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.16),_transparent_24%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.1),_transparent_22%),linear-gradient(180deg,_#f6f8ff_0%,_#ffffff_42%,_#f9fbff_100%)] text-slate-900">
-      <Header onImportConfig={handleImportConfig} />
-      <main className="flex-1 overflow-auto px-4 pb-8 pt-4 sm:px-6 sm:pt-3 lg:px-8">
-        <AccountList
-          isRefreshing={isRefreshing}
-          refreshingAccountIds={refreshingAccountIds}
-          onDelete={(id) => setDeleteId(id)}
-          onRefreshAccount={refreshAccount}
-          onRefreshUsage={() => refreshAccounts(false)}
-          onRename={handleRename}
+    <div
+      className={
+        isTrayMode
+          ? "min-h-screen bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.14),_transparent_30%),linear-gradient(180deg,_#f4f7ff_0%,_#eef4ff_100%)] p-3 text-slate-900"
+          : "min-h-screen flex flex-col bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.16),_transparent_24%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.1),_transparent_22%),linear-gradient(180deg,_#f6f8ff_0%,_#ffffff_42%,_#f9fbff_100%)] text-slate-900"
+      }
+    >
+      {!isTrayMode && (
+        <Header
+          onImportConfig={handleImportConfig}
+          onImportCurrentAuth={handleImportCurrentAuth}
+          onSmartSwitch={handleSmartSwitch}
+          isImportingCurrentAuth={isImportingCurrentAuth}
+          isSmartSwitching={isSmartSwitching}
         />
+      )}
+      <main className={isTrayMode ? "" : "flex-1 overflow-auto px-4 pb-8 pt-4 sm:px-6 sm:pt-3 lg:px-8"}>
+        {isTrayMode ? (
+          <TrayPanel
+            isRefreshing={isRefreshing}
+            refreshingAccountIds={refreshingAccountIds}
+            isImportingCurrentAuth={isImportingCurrentAuth}
+            isSmartSwitching={isSmartSwitching}
+            resumingSessionId={resumingSessionId}
+            onRefreshUsage={() => refreshAccounts(false)}
+            onRefreshAccount={refreshAccount}
+            onImportCurrentAuth={handleImportCurrentAuth}
+            onSmartSwitch={handleSmartSwitch}
+            onResumeSession={handleResumeSession}
+            onSwitch={(account) => void requestSwitch(account)}
+          />
+        ) : (
+          <AccountList
+            isRefreshing={isRefreshing}
+            refreshingAccountIds={refreshingAccountIds}
+            onDelete={(id) => setConfirmState({ kind: "delete", accountId: id })}
+            onRefreshAccount={refreshAccount}
+            onRefreshUsage={() => refreshAccounts(false)}
+            onRename={handleRename}
+            onSwitch={(account) => void requestSwitch(account)}
+          />
+        )}
       </main>
       <SwitchProgress />
       {isAddModalOpen && <AddAccountModal />}
       {isSettingsOpen && <SettingsModal />}
       <Toast />
-      {deleteId && (
+      {confirmState?.kind === "delete" && (
         <ConfirmDialog
           title="删除账户"
-          message="确定要删除此账户吗？其保存的历史会话也将被移除。"
+          message="确定要删除此账户吗？其保存的凭证和兼容快照会被移除，但不会清空当前共享会话。"
+          confirmLabel="确认删除"
           onConfirm={handleDelete}
-          onCancel={() => setDeleteId(null)}
+          onCancel={() => setConfirmState(null)}
+        />
+      )}
+      {confirmState?.kind === "switch" && (
+        <ConfirmDialog
+          title="确认切换账户"
+          message={`切换到 ${confirmState.account.displayName} 后，会自动关闭并重新打开 Codex 桌面应用。当前正在运行的桌面端会话会被中断。`}
+          confirmLabel="继续切换"
+          tone="primary"
+          onConfirm={() => void handleConfirmSwitch()}
+          onCancel={() => setConfirmState(null)}
         />
       )}
     </div>

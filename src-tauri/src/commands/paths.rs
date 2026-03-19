@@ -9,9 +9,7 @@ pub fn home_codex_dir() -> Result<PathBuf, String> {
 }
 
 pub fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())
+    app.path().app_data_dir().map_err(|e| e.to_string())
 }
 
 #[tauri::command]

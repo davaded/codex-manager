@@ -1,4 +1,6 @@
+use chrono::TimeZone;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 // ─── IPC structs (camelCase for JS interop) ──────────────────────────────────
 
@@ -21,6 +23,9 @@ pub struct SessionInfo {
     pub file_count: u32,
     pub total_bytes: u64,
     pub last_snapshot_at: Option<String>,
+    pub current_session_id: Option<String>,
+    pub current_thread_name: Option<String>,
+    pub current_updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,8 +72,14 @@ pub struct OAuthResult {
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub auto_refresh_interval: u32,
+    #[serde(default = "default_auto_restart_codex_after_switch")]
+    pub auto_restart_codex_after_switch: bool,
     pub theme: String,
     pub proxy_url: String,
+}
+
+fn default_auto_restart_codex_after_switch() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,6 +122,12 @@ pub struct GetAccountRateLimitsResponse {
 pub struct AuthJson {
     pub auth_mode: String,
     pub tokens: Option<AuthTokens>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_last_refresh",
+        serialize_with = "serialize_last_refresh"
+    )]
     pub last_refresh: Option<i64>,
 }
 
@@ -138,4 +155,46 @@ pub struct TokenResponse {
     pub refresh_token: Option<String>,
     pub token_type: String,
     pub expires_in: Option<u64>,
+}
+
+fn deserialize_last_refresh<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    match value {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(number)) => Ok(number.as_i64()),
+        Some(Value::String(text)) => {
+            if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(&text) {
+                return Ok(Some(parsed.timestamp_millis()));
+            }
+            if let Ok(parsed) = text.parse::<i64>() {
+                return Ok(Some(parsed));
+            }
+            Ok(None)
+        }
+        _ => Ok(None),
+    }
+}
+
+fn serialize_last_refresh<S>(value: &Option<i64>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match value {
+        Some(raw) => {
+            let dt = if *raw > 1_000_000_000_000 {
+                chrono::Utc.timestamp_millis_opt(*raw).single()
+            } else {
+                chrono::Utc.timestamp_opt(*raw, 0).single()
+            };
+
+            match dt {
+                Some(parsed) => serializer.serialize_some(&parsed.to_rfc3339()),
+                None => serializer.serialize_none(),
+            }
+        }
+        None => serializer.serialize_none(),
+    }
 }

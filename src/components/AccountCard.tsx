@@ -2,7 +2,6 @@ import React, { Suspense, useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { Account } from "../types";
 import { useAccountStore } from "../store/accountStore";
-import { useAccountSwitch } from "../hooks/useAccountSwitch";
 import { formatRelativeTime, getAccountInsight } from "../utils/dashboard";
 
 const UsageChart = React.lazy(() => import("./UsageChart"));
@@ -15,6 +14,7 @@ interface AccountCardProps {
   onDelete: (id: string) => void;
   onRefresh: () => Promise<void>;
   onRename: (id: string, displayName: string) => Promise<void>;
+  onSwitch: (account: Account) => void;
 }
 
 const ROLE_STYLES = {
@@ -35,9 +35,9 @@ const AccountCard: React.FC<AccountCardProps> = ({
   onDelete,
   onRefresh,
   onRename,
+  onSwitch,
 }) => {
   const { switchState } = useAccountStore();
-  const { switchAccount } = useAccountSwitch();
   const insight = getAccountInsight(account);
   const [isEditing, setIsEditing] = useState(false);
   const [draftName, setDraftName] = useState(account.displayName);
@@ -311,8 +311,8 @@ const AccountCard: React.FC<AccountCardProps> = ({
             {isActive
               ? "当前账号已写入 auth.json"
               : isSwitchTarget
-              ? "正在写入目标会话"
-              : "可通过下方按钮切换"}
+              ? "正在切换共享会话的账号凭证"
+              : "切换后继续当前共享会话"}
           </div>
         </div>
       </div>
@@ -321,7 +321,7 @@ const AccountCard: React.FC<AccountCardProps> = ({
 
       <div className="flex items-center gap-3">
         <button
-          onClick={() => !isActive && switchAccount(account)}
+          onClick={() => !isActive && onSwitch(account)}
           disabled={isActive || isSwitching}
           className={clsx(
             "flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all disabled:cursor-not-allowed",

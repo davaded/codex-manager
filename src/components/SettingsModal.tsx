@@ -74,6 +74,38 @@ const SettingsModal: React.FC = () => {
         </div>
 
         <div className="space-y-7">
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700">
+                  切换后自动重启 Codex
+                </label>
+                <p className="mt-2 text-xs leading-6 text-slate-500">
+                  开启后，账号切换成功会自动关闭并重新打开 Codex 桌面应用，让新账号立即生效。
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.autoRestartCodexAfterSwitch}
+                onClick={() =>
+                  updateSettings({
+                    autoRestartCodexAfterSwitch: !settings.autoRestartCodexAfterSwitch,
+                  })
+                }
+                className={`relative mt-1 inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                  settings.autoRestartCodexAfterSwitch ? "bg-indigo-600" : "bg-slate-300"
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                    settings.autoRestartCodexAfterSwitch ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="mb-3 block text-sm font-medium text-slate-700">
               自动刷新间隔

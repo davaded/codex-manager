@@ -20,6 +20,12 @@ export interface AccountInsight {
   hasRealRateLimits: boolean;
 }
 
+interface RankedQuotaAccount {
+  account: Account;
+  primaryUsed: number;
+  secondaryUsed: number;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -116,13 +122,13 @@ function deriveWeeklyQuota(account: Account): QuotaMetric {
       label: "每周已使用配额",
       percent,
       detail: `刷新时间 ${formatResetTimestamp(account.rateLimits.secondary.resetsAt)}`,
-      valueLabel: `${percent}% / 周`,
+      valueLabel: `${percent}% / week`,
       tone: metricTone(percent),
       available: true,
     };
   }
 
-  return createUnavailableMetric("每周已使用配额", "周");
+  return createUnavailableMetric("每周已使用配额", "week");
 }
 
 export function getAccountInsight(account: Account): AccountInsight {
@@ -142,18 +148,45 @@ export function getAccountInsight(account: Account): AccountInsight {
   };
 }
 
-export function getRecommendedAccountId(accounts: Account[]): string | null {
-  const candidates = accounts.filter(
-    (account) => !account.isActive && Boolean(account.rateLimits?.primary),
-  );
-  if (candidates.length === 0) return null;
+function getRankedQuotaAccounts(accounts: Account[]): RankedQuotaAccount[] {
+  return accounts
+    .filter(
+      (account) =>
+        typeof account.rateLimits?.primary?.usedPercent === "number" ||
+        typeof account.rateLimits?.secondary?.usedPercent === "number",
+    )
+    .map((account) => ({
+      account,
+      primaryUsed:
+        typeof account.rateLimits?.primary?.usedPercent === "number"
+          ? clamp(account.rateLimits.primary.usedPercent, 0, 100)
+          : Number.POSITIVE_INFINITY,
+      secondaryUsed:
+        typeof account.rateLimits?.secondary?.usedPercent === "number"
+          ? clamp(account.rateLimits.secondary.usedPercent, 0, 100)
+          : Number.POSITIVE_INFINITY,
+    }))
+    .sort((left, right) => {
+      if (left.primaryUsed !== right.primaryUsed) {
+        return left.primaryUsed - right.primaryUsed;
+      }
+      if (left.secondaryUsed !== right.secondaryUsed) {
+        return left.secondaryUsed - right.secondaryUsed;
+      }
+      return left.account.createdAt.localeCompare(right.account.createdAt);
+    });
+}
 
-  return [...candidates]
-    .sort(
-      (left, right) =>
-        (getAccountInsight(left).hourlyQuota.percent ?? Number.POSITIVE_INFINITY) -
-        (getAccountInsight(right).hourlyQuota.percent ?? Number.POSITIVE_INFINITY),
-    )[0]?.id ?? null;
+export function getRecommendedAccountId(accounts: Account[]): string | null {
+  return (
+    getRankedQuotaAccounts(accounts)
+      .find(({ account }) => !account.isActive)
+      ?.account.id ?? null
+  );
+}
+
+export function getBestQuotaAccount(accounts: Account[]): Account | null {
+  return getRankedQuotaAccounts(accounts)[0]?.account ?? null;
 }
 
 export function formatRelativeTime(iso: string | null): string {

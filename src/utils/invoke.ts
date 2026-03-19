@@ -35,6 +35,9 @@ const demoAccounts: AccountsStore = {
         fileCount: 42,
         totalBytes: 5_320_000,
         lastSnapshotAt: "2026-03-18T07:30:00.000Z",
+        currentSessionId: "019cfff1-1ca0-7c21-b5f4-7f5a0fc8725a",
+        currentThreadName: "复刻界面设计并完善功能",
+        currentUpdatedAt: "2026-03-18T07:55:43.7207813Z",
       },
       rateLimits: {
         limitId: "codex",
@@ -55,6 +58,9 @@ const demoAccounts: AccountsStore = {
         fileCount: 8,
         totalBytes: 1_180_000,
         lastSnapshotAt: "2026-03-18T06:30:00.000Z",
+        currentSessionId: null,
+        currentThreadName: null,
+        currentUpdatedAt: null,
       },
       rateLimits: {
         limitId: "codex",
@@ -75,6 +81,9 @@ const demoAccounts: AccountsStore = {
         fileCount: 36,
         totalBytes: 4_740_000,
         lastSnapshotAt: "2026-03-10T01:15:00.000Z",
+        currentSessionId: null,
+        currentThreadName: null,
+        currentUpdatedAt: null,
       },
       rateLimits: {
         limitId: "codex",
@@ -94,6 +103,7 @@ const demoCredentials: Record<string, string> = {
 
 const demoSettings: AppSettings = {
   autoRefreshInterval: 0,
+  autoRestartCodexAfterSwitch: true,
   theme: "system",
   proxyUrl: "",
 };
@@ -131,7 +141,10 @@ function ensureMockSeed() {
     writeJson(MOCK_CREDENTIALS_KEY, demoCredentials);
   }
   if (!window.localStorage.getItem(MOCK_AUTH_KEY)) {
-    window.localStorage.setItem(MOCK_AUTH_KEY, '{"profile":"work-main"}');
+    window.localStorage.setItem(
+      MOCK_AUTH_KEY,
+      demoCredentials["6d4c1b6f-6d4d-4e5f-81f9-08f853dbb0a1"],
+    );
   }
   if (!window.localStorage.getItem(MOCK_SETTINGS_KEY)) {
     writeJson(MOCK_SETTINGS_KEY, demoSettings);
@@ -167,7 +180,10 @@ function writeMockAuth(content: string) {
 
 function readMockSettings(): AppSettings {
   ensureMockSeed();
-  return readJson(MOCK_SETTINGS_KEY, demoSettings);
+  return {
+    ...demoSettings,
+    ...readJson(MOCK_SETTINGS_KEY, demoSettings),
+  };
 }
 
 function writeMockSettings(data: AppSettings) {
@@ -244,9 +260,18 @@ const browserApi = {
   ): Promise<SwitchResult> {
     const store = readMockAccounts();
     const fromAccount = fromId ? store.accounts.find((item) => item.id === fromId) : null;
-    const toAccount = store.accounts.find((item) => item.id === toId) ?? null;
-    const snapshot = createSnapshotFrom(fromAccount?.sessionInfo);
-    const restore = createRestoreFrom(toAccount?.sessionInfo);
+    const liveSessionInfo =
+      store.accounts.find((item) => item.isActive)?.sessionInfo ??
+      fromAccount?.sessionInfo ?? {
+        fileCount: 0,
+        totalBytes: 0,
+        lastSnapshotAt: null,
+        currentSessionId: null,
+        currentThreadName: null,
+        currentUpdatedAt: null,
+      };
+    const snapshot = createSnapshotFrom(liveSessionInfo);
+    const restore = createRestoreFrom(liveSessionInfo);
     const now = new Date().toISOString();
 
     const nextAccounts = store.accounts.map((account) => ({
@@ -254,11 +279,23 @@ const browserApi = {
       isActive: account.id === toId,
       lastSwitchedAt: account.id === toId ? now : account.lastSwitchedAt,
       sessionInfo:
-        account.id === fromId
+        account.id === toId
           ? {
-              fileCount: account.sessionInfo?.fileCount ?? 0,
-              totalBytes: account.sessionInfo?.totalBytes ?? 0,
-              lastSnapshotAt: now,
+              fileCount: restore.fileCount,
+              totalBytes: restore.totalBytes,
+              lastSnapshotAt: restore.restoreTime,
+              currentSessionId: liveSessionInfo.currentSessionId ?? null,
+              currentThreadName: liveSessionInfo.currentThreadName ?? null,
+              currentUpdatedAt: liveSessionInfo.currentUpdatedAt ?? null,
+            }
+          : account.id === fromId
+          ? {
+              fileCount: snapshot.fileCount,
+              totalBytes: snapshot.totalBytes,
+              lastSnapshotAt: snapshot.snapshotTime,
+              currentSessionId: liveSessionInfo.currentSessionId ?? null,
+              currentThreadName: liveSessionInfo.currentThreadName ?? null,
+              currentUpdatedAt: liveSessionInfo.currentUpdatedAt ?? null,
             }
           : account.sessionInfo,
     }));
@@ -288,6 +325,9 @@ const browserApi = {
         fileCount: 0,
         totalBytes: 0,
         lastSnapshotAt: null,
+        currentSessionId: null,
+        currentThreadName: null,
+        currentUpdatedAt: null,
       }
     );
   },
@@ -299,6 +339,12 @@ const browserApi = {
         account.id === accountId ? { ...account, sessionInfo: null } : account,
       ),
     });
+  },
+  async resumeSessionInTerminal(_sessionId: string): Promise<void> {
+    return;
+  },
+  async restartCodexDesktop(): Promise<void> {
+    return;
   },
   async startOauthFlow(): Promise<OAuthResult> {
     const stamp = Date.now().toString().slice(-5);
@@ -354,6 +400,9 @@ export const api = isTauriRuntime
       getCurrentSessionsInfo: () => invoke<SessionInfo>("get_current_sessions_info"),
       deleteAccountSessions: (accountId: string) =>
         invoke<void>("delete_account_sessions", { accountId }),
+      resumeSessionInTerminal: (sessionId: string) =>
+        invoke<void>("resume_session_in_terminal", { sessionId }),
+      restartCodexDesktop: () => invoke<void>("restart_codex_desktop"),
 
       // oauth
       startOauthFlow: () => invoke<OAuthResult>("start_oauth_flow"),

@@ -15,6 +15,9 @@ export interface SessionInfo {
   fileCount: number;
   totalBytes: number;
   lastSnapshotAt: string | null;
+  currentSessionId?: string | null;
+  currentThreadName?: string | null;
+  currentUpdatedAt?: string | null;
 }
 
 export interface AccountCredentials {
@@ -71,6 +74,7 @@ export interface OAuthResult {
 
 export interface AppSettings {
   autoRefreshInterval: number; // minutes, 0 = disabled
+  autoRestartCodexAfterSwitch: boolean;
   theme: 'light' | 'dark' | 'system';
   proxyUrl: string;
 }

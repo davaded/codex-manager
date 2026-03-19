@@ -4,11 +4,21 @@ import { exportBackupBundle } from "../utils/backup";
 
 interface HeaderProps {
   onImportConfig: (file: File) => Promise<void>;
+  onImportCurrentAuth: () => Promise<void>;
+  onSmartSwitch: () => Promise<void>;
+  isImportingCurrentAuth: boolean;
+  isSmartSwitching: boolean;
 }
 
 const APP_VERSION = "v0.1.0";
 
-const Header: React.FC<HeaderProps> = ({ onImportConfig }) => {
+const Header: React.FC<HeaderProps> = ({
+  onImportConfig,
+  onImportCurrentAuth,
+  onSmartSwitch,
+  isImportingCurrentAuth,
+  isSmartSwitching,
+}) => {
   const { accounts, settings, setSettingsOpen, setAddModalOpen, showToast } =
     useAccountStore();
   const activeAccount = accounts.find((a) => a.isActive);
@@ -79,6 +89,43 @@ const Header: React.FC<HeaderProps> = ({ onImportConfig }) => {
           />
 
           <button
+            onClick={() => void onImportCurrentAuth()}
+            disabled={isImportingCurrentAuth}
+            className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60 lg:flex"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 12l4.5 4.5L20 5m-8 14V9"
+              />
+            </svg>
+            {isImportingCurrentAuth ? "导入中..." : "导入当前授权"}
+          </button>
+
+          <button
+            onClick={() => void onSmartSwitch()}
+            disabled={isSmartSwitching}
+            className="hidden items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/90 px-3 py-2 text-sm font-semibold text-emerald-700 transition-all hover:border-emerald-300 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 md:flex"
+          >
+            <svg
+              className={`h-4 w-4 ${isSmartSwitching ? "animate-spin" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 4.06V2.5A1.5 1.5 0 0114.5 1h1A8.5 8.5 0 0124 9.5v1A1.5 1.5 0 0122.5 12H21m-10 7.94v1.56A1.5 1.5 0 019.5 23h-1A8.5 8.5 0 010 14.5v-1A1.5 1.5 0 011.5 12H3m11.5 0a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"
+              />
+            </svg>
+            {isSmartSwitching ? "智能切换中..." : "智能切换"}
+          </button>
+
+          <button
             onClick={handleExport}
             className="hidden items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-900 sm:flex"
           >
@@ -142,6 +189,20 @@ const Header: React.FC<HeaderProps> = ({ onImportConfig }) => {
       </div>
 
       <div className="mx-auto w-full max-w-[1480px] px-4 pb-2 sm:hidden">
+        <button
+          onClick={() => void onImportCurrentAuth()}
+          disabled={isImportingCurrentAuth}
+          className="mr-2 rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition-all hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isImportingCurrentAuth ? "导入中..." : "导入当前授权"}
+        </button>
+        <button
+          onClick={() => void onSmartSwitch()}
+          disabled={isSmartSwitching}
+          className="mr-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 transition-all hover:border-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isSmartSwitching ? "智能切换中..." : "智能切换"}
+        </button>
         <button
           onClick={handleExport}
           className="mr-2 rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition-all hover:border-slate-300 hover:bg-white"

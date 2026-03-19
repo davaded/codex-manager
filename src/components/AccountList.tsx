@@ -1,5 +1,6 @@
 import React from "react";
 import { useAccountStore } from "../store/accountStore";
+import { Account } from "../types";
 import AccountCard from "./AccountCard";
 import EmptyState from "./EmptyState";
 import { getRecommendedAccountId } from "../utils/dashboard";
@@ -11,6 +12,7 @@ interface AccountListProps {
   onRefreshAccount: (id: string) => Promise<void>;
   onRefreshUsage: () => Promise<void>;
   onRename: (id: string, displayName: string) => Promise<void>;
+  onSwitch: (account: Account) => void;
 }
 
 const AccountList: React.FC<AccountListProps> = ({
@@ -20,6 +22,7 @@ const AccountList: React.FC<AccountListProps> = ({
   onRefreshAccount,
   onRefreshUsage,
   onRename,
+  onSwitch,
 }) => {
   const { accounts, setAddModalOpen } = useAccountStore();
 
@@ -84,6 +87,7 @@ const AccountList: React.FC<AccountListProps> = ({
             onDelete={onDelete}
             onRefresh={() => onRefreshAccount(account.id)}
             onRename={onRename}
+            onSwitch={onSwitch}
           />
         ))}
 

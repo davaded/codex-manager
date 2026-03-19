@@ -87,7 +87,8 @@ fn extract_claim_string(value: &Value, key: &str) -> Option<String> {
 }
 
 fn extract_nested_auth_claim(value: &Value, key: &str) -> Option<String> {
-    value.get("https://api.openai.com/auth")?
+    value
+        .get("https://api.openai.com/auth")?
         .get(key)?
         .as_str()
         .map(ToString::to_string)
@@ -226,7 +227,9 @@ fn build_http_client(settings: &AppSettings) -> Result<reqwest::Client, String> 
         builder = builder.proxy(proxy);
     }
 
-    builder.build().map_err(|e| format!("创建 HTTP 客户端失败: {e}"))
+    builder
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))
 }
 
 async fn request_usage_payload(
@@ -290,17 +293,19 @@ async fn request_usage_payload(
     })
 }
 
-async fn refresh_auth_tokens(
-    client: &reqwest::Client,
-    auth: &mut AuthJson,
-) -> Result<(), String> {
+async fn refresh_auth_tokens(client: &reqwest::Client, auth: &mut AuthJson) -> Result<(), String> {
     let refresh_token = refresh_token(auth)?.to_string();
     let token_url = auth
         .tokens
         .as_ref()
         .and_then(|tokens| tokens.id_token.as_deref())
         .and_then(decode_jwt_payload)
-        .and_then(|claims| claims.get("iss").and_then(Value::as_str).map(ToString::to_string))
+        .and_then(|claims| {
+            claims
+                .get("iss")
+                .and_then(Value::as_str)
+                .map(ToString::to_string)
+        })
         .unwrap_or_else(|| "https://auth.openai.com".to_string());
     let token_endpoint = format!("{}/oauth/token", token_url.trim_end_matches('/'));
 
@@ -425,8 +430,8 @@ pub async fn read_account_rate_limits(
     let settings = accounts::load_settings(app.clone()).await?;
     let client = build_http_client(&settings)?;
 
-    let mut resolved_account_id =
-        extract_account_id(&auth).ok_or_else(|| "无法从 auth.json 识别 chatgpt_account_id".to_string())?;
+    let mut resolved_account_id = extract_account_id(&auth)
+        .ok_or_else(|| "无法从 auth.json 识别 chatgpt_account_id".to_string())?;
 
     match request_usage_payload(&client, access_token(&auth)?, &resolved_account_id).await {
         Ok(payload) => Ok(map_usage_payload(payload)),
@@ -434,16 +439,20 @@ pub async fn read_account_rate_limits(
             refresh_auth_tokens(&client, &mut auth).await?;
             resolved_account_id = extract_account_id(&auth)
                 .ok_or_else(|| "刷新后仍无法识别 chatgpt_account_id".to_string())?;
-            let serialized =
-                serde_json::to_string_pretty(&auth).map_err(|e| format!("auth.json 序列化失败: {e}"))?;
+            let serialized = serde_json::to_string_pretty(&auth)
+                .map_err(|e| format!("auth.json 序列化失败: {e}"))?;
             fs::write(&credentials_path, serialized)
                 .await
                 .map_err(|e| format!("更新账号凭证失败: {e}"))?;
-            let payload = request_usage_payload(&client, access_token(&auth)?, &resolved_account_id)
-                .await
-                .map_err(|refresh_err| {
-                    format!("{} | 刷新令牌后重试仍失败: {}", err.message, refresh_err.message)
-                })?;
+            let payload =
+                request_usage_payload(&client, access_token(&auth)?, &resolved_account_id)
+                    .await
+                    .map_err(|refresh_err| {
+                        format!(
+                            "{} | 刷新令牌后重试仍失败: {}",
+                            err.message, refresh_err.message
+                        )
+                    })?;
             Ok(map_usage_payload(payload))
         }
         Err(err) => Err(err.message),

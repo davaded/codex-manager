@@ -85,7 +85,9 @@ async fn callback_handler(
             let _ = sender.send(Err(format!("OAuth error: {}", err)));
         }
         let mut sd = state.shutdown_tx.lock().await;
-        if let Some(s) = sd.take() { let _ = s.send(()); }
+        if let Some(s) = sd.take() {
+            let _ = s.send(());
+        }
         return Html("<h1>Authorization failed. You may close this window.</h1>".to_string());
     }
 
@@ -98,7 +100,9 @@ async fn callback_handler(
             let _ = sender.send(Err("CSRF state mismatch".to_string()));
         }
         let mut sd = state.shutdown_tx.lock().await;
-        if let Some(s) = sd.take() { let _ = s.send(()); }
+        if let Some(s) = sd.take() {
+            let _ = s.send(());
+        }
         return Html("<h1>Security error. You may close this window.</h1>".to_string());
     }
 
@@ -107,14 +111,20 @@ async fn callback_handler(
         let _ = sender.send(Ok((code, received_state)));
     }
     let mut sd = state.shutdown_tx.lock().await;
-    if let Some(s) = sd.take() { let _ = s.send(()); }
+    if let Some(s) = sd.take() {
+        let _ = s.send(());
+    }
 
     Html("<h1>Authorization complete! You may close this window.</h1>".to_string())
 }
 
 // ─── Token exchange ───────────────────────────────────────────────────────────
 
-async fn exchange_code(app: &AppHandle, code: &str, verifier: &str) -> Result<TokenResponse, String> {
+async fn exchange_code(
+    app: &AppHandle,
+    code: &str,
+    verifier: &str,
+) -> Result<TokenResponse, String> {
     let settings = accounts::load_settings(app.clone()).await?;
     let mut client_builder = reqwest::Client::builder();
 
@@ -146,7 +156,9 @@ async fn exchange_code(app: &AppHandle, code: &str, verifier: &str) -> Result<To
         return Err(format!("Token exchange failed ({}): {}", status, body));
     }
 
-    resp.json::<TokenResponse>().await.map_err(|e| e.to_string())
+    resp.json::<TokenResponse>()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ─── Main OAuth command ───────────────────────────────────────────────────────
@@ -178,7 +190,9 @@ pub async fn start_oauth_flow(app: AppHandle) -> Result<OAuthResult, String> {
 
     let server = tokio::spawn(async move {
         axum::serve(listener, router)
-            .with_graceful_shutdown(async { let _ = shutdown_rx.await; })
+            .with_graceful_shutdown(async {
+                let _ = shutdown_rx.await;
+            })
             .await
             .ok();
     });
@@ -212,11 +226,8 @@ pub async fn start_oauth_flow(app: AppHandle) -> Result<OAuthResult, String> {
     }
 
     // Wait for callback (5-minute timeout)
-    let callback_result = tokio::time::timeout(
-        tokio::time::Duration::from_secs(300),
-        result_rx,
-    )
-    .await;
+    let callback_result =
+        tokio::time::timeout(tokio::time::Duration::from_secs(300), result_rx).await;
 
     // Always shut down the server regardless of outcome
     shutdown(&cleanup_state).await;
@@ -233,10 +244,7 @@ pub async fn start_oauth_flow(app: AppHandle) -> Result<OAuthResult, String> {
     // Exchange code for tokens
     let tokens = exchange_code(&app, &code, &code_verifier).await?;
 
-    let email = tokens
-        .id_token
-        .as_deref()
-        .and_then(extract_email);
+    let email = tokens.id_token.as_deref().and_then(extract_email);
     let user_id = extract_account_id(&tokens.access_token);
 
     // Build auth.json

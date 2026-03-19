@@ -3,9 +3,9 @@ import { useAccountStore } from "../store/accountStore";
 import { SwitchPhase } from "../types";
 
 const PHASES: { key: SwitchPhase; label: string; order: number }[] = [
-  { key: "snapshotting", label: "保存当前对话历史", order: 1 },
-  { key: "restoring", label: "还原目标对话历史", order: 2 },
-  { key: "writing_auth", label: "更新登录凭证", order: 3 },
+  { key: "snapshotting", label: "确认当前共享会话状态", order: 1 },
+  { key: "restoring", label: "切换目标账号身份", order: 2 },
+  { key: "writing_auth", label: "保持当前会话继续可用", order: 3 },
 ];
 
 function getIcon(
@@ -50,7 +50,7 @@ const SwitchProgress: React.FC = () => {
           正在切换至 &ldquo;{target?.displayName ?? "..."}&rdquo;
         </h2>
         <p className="mt-2 text-sm leading-7 text-slate-500">
-          会先保存当前会话快照，再恢复目标账户的上下文与凭据。
+          会保持当前共享会话仓库不变，只切换目标账户的登录凭证。
         </p>
 
         <div className="mt-7 space-y-4 rounded-[24px] border border-slate-100 bg-slate-50/90 p-5">
