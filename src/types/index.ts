@@ -79,6 +79,16 @@ export interface AppSettings {
   proxyUrl: string;
 }
 
+export interface DesktopPlatformCapabilities {
+  platform: string;
+  supportsAutoRestartCodexDesktop: boolean;
+  supportsResumeSessionInTerminal: boolean;
+  supportsSystemTray: boolean;
+  supportsTaskbarShortcuts: boolean;
+  supportsDockMenu: boolean;
+  supportsAppIndicator: boolean;
+}
+
 export interface CreditsSnapshot {
   hasCredits?: boolean | null;
   unlimited?: boolean | null;

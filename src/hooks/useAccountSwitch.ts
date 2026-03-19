@@ -6,10 +6,13 @@ export const useAccountSwitch = () => {
   const { setSwitchState, showToast, setAccounts } = useAccountStore();
 
   const switchAccount = async (toAccount: Account) => {
-    const { accounts, settings } = useAccountStore.getState();
+    const { accounts, settings, platformCapabilities } = useAccountStore.getState();
     const activeAccount = accounts.find((a) => a.isActive);
     const fromId = activeAccount?.id ?? null;
     const toId = toAccount.id;
+    const canAutoRestartCodex =
+      settings.autoRestartCodexAfterSwitch &&
+      platformCapabilities?.supportsAutoRestartCodexDesktop === true;
 
     setSwitchState({
       phase: "snapshotting",
@@ -96,7 +99,7 @@ export const useAccountSwitch = () => {
       }
 
       let restartErrorMessage: string | null = null;
-      if (settings.autoRestartCodexAfterSwitch) {
+      if (canAutoRestartCodex) {
         try {
           await api.restartCodexDesktop();
         } catch (restartError: unknown) {
@@ -116,7 +119,7 @@ export const useAccountSwitch = () => {
 
       if (issues.length > 0) {
         showToast(`已切换至 ${toAccount.displayName}，但${issues.join("；")}`);
-      } else if (settings.autoRestartCodexAfterSwitch) {
+      } else if (canAutoRestartCodex) {
         showToast(`已切换至 ${toAccount.displayName}，正在重新打开 Codex`);
       } else {
         showToast(`已切换至 ${toAccount.displayName}，请重新打开 Codex 以使用新账号`);

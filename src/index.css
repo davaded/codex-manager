@@ -18,6 +18,11 @@
     @apply min-h-screen bg-slate-50 text-slate-900 antialiased;
   }
 
+  body.tray-mode,
+  body.tray-mode #root {
+    background: transparent;
+  }
+
   body,
   #root {
     @apply min-h-screen;

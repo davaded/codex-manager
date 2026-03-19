@@ -84,6 +84,18 @@ fn default_auto_restart_codex_after_switch() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DesktopPlatformCapabilities {
+    pub platform: String,
+    pub supports_auto_restart_codex_desktop: bool,
+    pub supports_resume_session_in_terminal: bool,
+    pub supports_system_tray: bool,
+    pub supports_taskbar_shortcuts: bool,
+    pub supports_dock_menu: bool,
+    pub supports_app_indicator: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreditsSnapshot {
     pub has_credits: Option<bool>,
     pub unlimited: Option<bool>,

@@ -30,9 +30,11 @@ const App: React.FC = () => {
     isSettingsOpen,
     accounts,
     setSettings,
+    setPlatformCapabilities,
     setSettingsSaveState,
     showToast,
     settings,
+    platformCapabilities,
   } = useAccountStore();
   const { switchAccount } = useAccountSwitch();
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
@@ -40,7 +42,6 @@ const App: React.FC = () => {
   const [refreshingAccountIds, setRefreshingAccountIds] = useState<string[]>([]);
   const [isImportingCurrentAuth, setIsImportingCurrentAuth] = useState(false);
   const [isSmartSwitching, setIsSmartSwitching] = useState(false);
-  const [resumingSessionId, setResumingSessionId] = useState<string | null>(null);
   const refreshingRef = useRef(false);
   const settingsLoadedRef = useRef(false);
   const lastSavedSettingsRef = useRef<string | null>(null);
@@ -58,7 +59,11 @@ const App: React.FC = () => {
       return;
     }
 
-    if (settings.autoRestartCodexAfterSwitch) {
+    const canAutoRestartCodex =
+      settings.autoRestartCodexAfterSwitch &&
+      platformCapabilities?.supportsAutoRestartCodexDesktop === true;
+
+    if (canAutoRestartCodex) {
       setConfirmState({ kind: "switch", account });
       return;
     }
@@ -227,14 +232,22 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    api.loadSettings().then((loadedSettings) => {
-      setSettings(loadedSettings);
-      lastSavedSettingsRef.current = JSON.stringify(loadedSettings);
-    }).finally(() => {
-      settingsLoadedRef.current = true;
-    });
+    void api.getPlatformCapabilities().then(setPlatformCapabilities).catch(() => undefined);
+    api.loadSettings()
+      .then((loadedSettings) => {
+        setSettings(loadedSettings);
+        lastSavedSettingsRef.current = JSON.stringify(loadedSettings);
+      })
+      .finally(() => {
+        settingsLoadedRef.current = true;
+      });
     void refreshAccounts(true);
-  }, [setSettings]);
+  }, [setPlatformCapabilities, setSettings]);
+
+  useEffect(() => {
+    document.body.classList.toggle("tray-mode", isTrayMode);
+    return () => document.body.classList.remove("tray-mode");
+  }, [isTrayMode]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -344,39 +357,11 @@ const App: React.FC = () => {
     }
   };
 
-  const handleResumeSession = async (sessionId: string) => {
-    if (!sessionId || resumingSessionId === sessionId) {
-      return;
-    }
-
-    setResumingSessionId(sessionId);
-    try {
-      await api.resumeSessionInTerminal(sessionId);
-      showToast(`已在新终端中恢复会话 ${sessionId.slice(0, 8)}`);
-    } catch (error) {
-      const command = `codex resume ${sessionId}`;
-      try {
-        await navigator.clipboard.writeText(command);
-        showToast(
-          `自动拉起失败，已复制恢复命令: ${command}`,
-        );
-      } catch {
-        showToast(
-          `自动拉起失败，请手动执行: ${command} (${
-            error instanceof Error ? error.message : String(error)
-          })`,
-        );
-      }
-    } finally {
-      setResumingSessionId(null);
-    }
-  };
-
   return (
     <div
       className={
         isTrayMode
-          ? "min-h-screen bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.14),_transparent_30%),linear-gradient(180deg,_#f4f7ff_0%,_#eef4ff_100%)] p-3 text-slate-900"
+          ? "min-h-screen bg-transparent p-2 text-stone-100"
           : "min-h-screen flex flex-col bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.16),_transparent_24%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.1),_transparent_22%),linear-gradient(180deg,_#f6f8ff_0%,_#ffffff_42%,_#f9fbff_100%)] text-slate-900"
       }
     >
@@ -396,12 +381,10 @@ const App: React.FC = () => {
             refreshingAccountIds={refreshingAccountIds}
             isImportingCurrentAuth={isImportingCurrentAuth}
             isSmartSwitching={isSmartSwitching}
-            resumingSessionId={resumingSessionId}
             onRefreshUsage={() => refreshAccounts(false)}
             onRefreshAccount={refreshAccount}
             onImportCurrentAuth={handleImportCurrentAuth}
             onSmartSwitch={handleSmartSwitch}
-            onResumeSession={handleResumeSession}
             onSwitch={(account) => void requestSwitch(account)}
           />
         ) : (

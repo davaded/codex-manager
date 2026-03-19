@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   AppSettings,
   AccountsStore,
+  DesktopPlatformCapabilities,
   GetAccountRateLimitsResponse,
   OAuthResult,
   RateLimitSnapshot,
@@ -106,6 +107,16 @@ const demoSettings: AppSettings = {
   autoRestartCodexAfterSwitch: true,
   theme: "system",
   proxyUrl: "",
+};
+
+const mockPlatformCapabilities: DesktopPlatformCapabilities = {
+  platform: "browser",
+  supportsAutoRestartCodexDesktop: false,
+  supportsResumeSessionInTerminal: false,
+  supportsSystemTray: false,
+  supportsTaskbarShortcuts: false,
+  supportsDockMenu: false,
+  supportsAppIndicator: false,
 };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -215,6 +226,9 @@ const browserApi = {
   },
   async loadSettings(): Promise<AppSettings> {
     return readMockSettings();
+  },
+  async getPlatformCapabilities(): Promise<DesktopPlatformCapabilities> {
+    return mockPlatformCapabilities;
   },
   async saveSettings(data: AppSettings): Promise<void> {
     writeMockSettings(data);
@@ -371,6 +385,8 @@ export const api = isTauriRuntime
       loadAccounts: () => invoke<AccountsStore>("load_accounts"),
       saveAccounts: (data: AccountsStore) => invoke<void>("save_accounts", { data }),
       loadSettings: () => invoke<AppSettings>("load_settings"),
+      getPlatformCapabilities: () =>
+        invoke<DesktopPlatformCapabilities>("get_platform_capabilities"),
       saveSettings: (data: AppSettings) => invoke<void>("save_settings", { data }),
       readAuthJson: () => invoke<string>("read_auth_json"),
       writeAuthJson: (content: string) => invoke<void>("write_auth_json", { content }),

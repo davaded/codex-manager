@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { Account, AppSettings, SwitchState } from "../types";
+import { Account, AppSettings, DesktopPlatformCapabilities, SwitchState } from "../types";
 
 interface AccountStoreState {
   accounts: Account[];
@@ -8,6 +8,7 @@ interface AccountStoreState {
   isAddModalOpen: boolean;
   isSettingsOpen: boolean;
   settings: AppSettings;
+  platformCapabilities: DesktopPlatformCapabilities | null;
   settingsSaveState: "idle" | "saving" | "saved" | "error";
 
   setAccounts: (accounts: Account[]) => void;
@@ -18,6 +19,7 @@ interface AccountStoreState {
   setAddModalOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setSettings: (settings: AppSettings) => void;
+  setPlatformCapabilities: (capabilities: DesktopPlatformCapabilities) => void;
   setSettingsSaveState: (
     state: "idle" | "saving" | "saved" | "error",
   ) => void;
@@ -50,6 +52,7 @@ export const useAccountStore = create<AccountStoreState>((set) => ({
   isAddModalOpen: false,
   isSettingsOpen: false,
   settings: defaultSettings,
+  platformCapabilities: null,
   settingsSaveState: "idle",
 
   setAccounts: (accounts) => set({ accounts }),
@@ -69,6 +72,7 @@ export const useAccountStore = create<AccountStoreState>((set) => ({
   setAddModalOpen: (open) => set({ isAddModalOpen: open }),
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   setSettings: (settings) => set({ settings }),
+  setPlatformCapabilities: (platformCapabilities) => set({ platformCapabilities }),
   setSettingsSaveState: (settingsSaveState) => set({ settingsSaveState }),
   updateSettings: (updates) =>
     set((state) => ({ settings: { ...state.settings, ...updates } })),

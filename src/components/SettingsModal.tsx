@@ -10,8 +10,9 @@ const REFRESH_OPTIONS = [
 ];
 
 const SettingsModal: React.FC = () => {
-  const { setSettingsOpen, settings, settingsSaveState, updateSettings } =
+  const { setSettingsOpen, settings, platformCapabilities, settingsSaveState, updateSettings } =
     useAccountStore();
+  const canAutoRestartCodex = platformCapabilities?.supportsAutoRestartCodexDesktop ?? false;
 
   const saveStateLabel =
     settingsSaveState === "saving"
@@ -87,6 +88,7 @@ const SettingsModal: React.FC = () => {
               <button
                 type="button"
                 role="switch"
+                disabled={!canAutoRestartCodex}
                 aria-checked={settings.autoRestartCodexAfterSwitch}
                 onClick={() =>
                   updateSettings({
@@ -94,7 +96,11 @@ const SettingsModal: React.FC = () => {
                   })
                 }
                 className={`relative mt-1 inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
-                  settings.autoRestartCodexAfterSwitch ? "bg-indigo-600" : "bg-slate-300"
+                  !canAutoRestartCodex
+                    ? "bg-slate-200"
+                    : settings.autoRestartCodexAfterSwitch
+                      ? "bg-indigo-600"
+                      : "bg-slate-300"
                 }`}
               >
                 <span
@@ -104,6 +110,11 @@ const SettingsModal: React.FC = () => {
                 />
               </button>
             </div>
+            {!canAutoRestartCodex && (
+              <p className="mt-3 text-xs leading-6 text-amber-600">
+                当前平台暂未提供自动重启 Codex 桌面应用能力，切换账号后需要手动重新打开 Codex。
+              </p>
+            )}
           </div>
 
           <div>
