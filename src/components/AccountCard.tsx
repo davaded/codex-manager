@@ -2,7 +2,11 @@ import React, { Suspense, useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { Account } from "../types";
 import { useAccountStore } from "../store/accountStore";
-import { formatRelativeTime, getAccountInsight } from "../utils/dashboard";
+import {
+  formatRelativeTime,
+  getAccountInsight,
+  shouldShowTeamAccountId,
+} from "../utils/dashboard";
 
 const UsageChart = React.lazy(() => import("./UsageChart"));
 
@@ -48,7 +52,8 @@ const AccountCard: React.FC<AccountCardProps> = ({
   const isSwitchTarget = switchState.toAccountId === account.id && isSwitching;
   const isQuotaRefreshing = isRefreshing || isRefreshingSelf;
   const statusLabel = isActive ? "当前使用中" : isSwitchTarget ? "正在切换" : "可切换";
-  const shortAccountId = account.accountId ? account.accountId.slice(-8) : null;
+  const shortAccountId =
+    shouldShowTeamAccountId(account) && account.accountId ? account.accountId.slice(-8) : null;
 
   useEffect(() => {
     setDraftName(account.displayName);

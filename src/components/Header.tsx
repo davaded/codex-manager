@@ -1,6 +1,7 @@
 import React, { useRef } from "react";
 import { useAccountStore } from "../store/accountStore";
 import { exportBackupBundle } from "../utils/backup";
+import { shouldShowTeamAccountId } from "../utils/dashboard";
 
 interface HeaderProps {
   onImportConfig: (file: File) => Promise<void>;
@@ -24,9 +25,9 @@ const Header: React.FC<HeaderProps> = ({
   const { accounts, settings, setSettingsOpen, setAddModalOpen, showToast } =
     useAccountStore();
   const activeAccount = accounts.find((a) => a.isActive);
-  const activeAccountHint = activeAccount?.accountId
-    ? ` · Team ${activeAccount.accountId.slice(-8)}`
-    : "";
+  const activeTeamAccountId =
+    activeAccount && shouldShowTeamAccountId(activeAccount) ? activeAccount.accountId : null;
+  const activeAccountHint = activeTeamAccountId ? ` · Team ${activeTeamAccountId.slice(-8)}` : "";
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const subtitle = activeAccount
     ? `当前工作账户：${activeAccount.displayName}${activeAccountHint}`

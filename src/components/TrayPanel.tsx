@@ -2,7 +2,12 @@ import React from "react";
 import { clsx } from "clsx";
 import { useAccountStore } from "../store/accountStore";
 import { Account } from "../types";
-import { formatRelativeTime, getAccountInsight, getRecommendedAccountId } from "../utils/dashboard";
+import {
+  formatRelativeTime,
+  getAccountInsight,
+  getRecommendedAccountId,
+  shouldShowTeamAccountId,
+} from "../utils/dashboard";
 
 interface TrayPanelProps {
   isRefreshing: boolean;
@@ -129,7 +134,10 @@ const TrayPanel: React.FC<TrayPanelProps> = ({
             const insight = getAccountInsight(account);
             const isActive = account.isActive;
             const isSelfRefreshing = refreshingAccountIds.includes(account.id);
-            const shortAccountId = account.accountId ? account.accountId.slice(-8) : null;
+            const shortAccountId =
+              shouldShowTeamAccountId(account) && account.accountId
+                ? account.accountId.slice(-8)
+                : null;
 
             return (
               <article

@@ -148,6 +148,11 @@ export function getAccountInsight(account: Account): AccountInsight {
   };
 }
 
+export function shouldShowTeamAccountId(account: Account): boolean {
+  const role = deriveRole(account);
+  return Boolean(account.accountId && role.roleTone === "team");
+}
+
 function getRankedQuotaAccounts(accounts: Account[]): RankedQuotaAccount[] {
   return accounts
     .filter(
