@@ -1,6 +1,6 @@
 # Codex Manager
 
-一个用于管理多个 OpenAI / Codex 账号的桌面工具，重点是切号时尽量不打断当前 Codex 会话和工作流。
+一个用于管理多个 Codex 账号的桌面与命令行工具，支持在桌面端和命令行中进行账号切换、配额查看与管理。
 
 [English](./README.en.md)
 
@@ -14,11 +14,11 @@
 
 主窗口：
 
-![Codex Manager Preview](./docs/preview.png)
+<img src="./docs/preview.png" alt="Codex Manager Preview" width="960" />
 
 托盘快捷面板：
 
-![Tray Panel Demo](./docs/tray-panel-demo.png)
+<img src="./docs/tray-panel-demo.png" alt="Tray Panel Demo" width="420" />
 
 ## 为什么做这个
 

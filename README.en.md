@@ -1,6 +1,6 @@
 # Codex Manager
 
-A desktop account manager for switching between multiple OpenAI/Codex accounts without breaking your current Codex session flow.
+A desktop and command-line manager for multiple Codex accounts, supporting account switching plus quota visibility and management from both the desktop app and the CLI.
 
 [简体中文](./README.md)
 
@@ -14,11 +14,11 @@ A desktop account manager for switching between multiple OpenAI/Codex accounts w
 
 Main window:
 
-![Codex Manager Preview](./docs/preview.png)
+<img src="./docs/preview.png" alt="Codex Manager Preview" width="960" />
 
 Tray panel for quick switching and quota checks:
 
-![Tray Panel Demo](./docs/tray-panel-demo.png)
+<img src="./docs/tray-panel-demo.png" alt="Tray Panel Demo" width="420" />
 
 ## Why
 
