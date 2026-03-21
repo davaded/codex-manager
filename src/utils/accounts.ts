@@ -3,12 +3,13 @@ import { api } from "./invoke";
 import { findAccountForAuth } from "./auth";
 
 async function resolveActiveAccountId(accounts: Account[]): Promise<string | null> {
+  const storedActiveAccountId = accounts.find((account) => account.isActive)?.id ?? null;
   const currentAuth = await api.readAuthJson().catch(() => null);
   if (!currentAuth) {
-    return accounts.find((account) => account.isActive)?.id ?? null;
+    return storedActiveAccountId;
   }
   const matched = await findAccountForAuth(accounts, currentAuth);
-  return matched?.id ?? null;
+  return matched?.id ?? storedActiveAccountId;
 }
 
 export async function hydrateAccounts(accounts: Account[]): Promise<Account[]> {

@@ -328,8 +328,7 @@ const App: React.FC = () => {
     try {
       const imported = await importBackupBundle(file, accounts);
       setSettings(imported.settings);
-      const hydrated = await hydrateAccounts(imported.accounts);
-      setAccounts(hydrated);
+      setAccounts(imported.accounts);
       showToast("配置已导入");
     } catch (error) {
       showToast(`导入失败: ${error instanceof Error ? error.message : String(error)}`);
