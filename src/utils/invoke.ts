@@ -28,6 +28,7 @@ const demoAccounts: AccountsStore = {
       id: "6d4c1b6f-6d4d-4e5f-81f9-08f853dbb0a1",
       displayName: "工作账号（主）",
       email: "dev@company.com",
+      accountId: "acc-work-main-001",
       userId: "team-dev",
       isActive: true,
       createdAt: "2026-03-09T08:20:00.000Z",
@@ -51,6 +52,7 @@ const demoAccounts: AccountsStore = {
       id: "3e72c630-4b00-4dc6-81c1-7086c171f354",
       displayName: "个人备用账号",
       email: "personal@gmail.com",
+      accountId: "acc-personal-002",
       userId: "personal-1",
       isActive: false,
       createdAt: "2026-03-02T02:15:00.000Z",
@@ -74,6 +76,7 @@ const demoAccounts: AccountsStore = {
       id: "02d1d53a-826f-471a-9aad-c5343b5d0f1d",
       displayName: "测试专用",
       email: "test.bot@company.com",
+      accountId: "acc-test-003",
       userId: "qa-bot",
       isActive: false,
       createdAt: "2026-02-26T04:10:00.000Z",
@@ -365,6 +368,7 @@ const browserApi = {
     return {
       authJson: `{"profile":"browser-mock-${stamp}"}`,
       email: `new.account.${stamp}@example.com`,
+      accountId: `acc-mock-${stamp}`,
       userId: `mock-${stamp}`,
     };
   },

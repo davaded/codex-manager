@@ -2,7 +2,12 @@ import React from "react";
 import { clsx } from "clsx";
 import { useAccountStore } from "../store/accountStore";
 import { Account } from "../types";
-import { formatRelativeTime, getAccountInsight, getRecommendedAccountId } from "../utils/dashboard";
+import {
+  formatRelativeTime,
+  getAccountInsight,
+  getRecommendedAccountId,
+  shouldShowTeamAccountId,
+} from "../utils/dashboard";
 
 interface TrayPanelProps {
   isRefreshing: boolean;
@@ -129,6 +134,10 @@ const TrayPanel: React.FC<TrayPanelProps> = ({
             const insight = getAccountInsight(account);
             const isActive = account.isActive;
             const isSelfRefreshing = refreshingAccountIds.includes(account.id);
+            const shortAccountId =
+              shouldShowTeamAccountId(account) && account.accountId
+                ? account.accountId.slice(-8)
+                : null;
 
             return (
               <article
@@ -157,6 +166,11 @@ const TrayPanel: React.FC<TrayPanelProps> = ({
                     <p className="mt-0.5 truncate text-[10px] text-white/60">
                       {account.email ?? account.userId ?? "未绑定邮箱"}
                     </p>
+                    {shortAccountId && (
+                      <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-100/70">
+                        Team {shortAccountId}
+                      </p>
+                    )}
                   </div>
 
                   <span
@@ -175,7 +189,7 @@ const TrayPanel: React.FC<TrayPanelProps> = ({
                   {[insight.hourlyQuota, insight.weeklyQuota].map((metric) => (
                     <div key={metric.label}>
                       <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/38">
-                        {metric.label.includes("5") ? "5H" : "WEEK"}
+                        {metric.label.includes("5小时") ? "5H" : "WEEK"}
                       </div>
                       <div className="mt-1 text-[12px] font-bold text-white/92">{metric.valueLabel}</div>
                       <div className="mt-0.5 truncate text-[10px] leading-4 text-white/50" title={metric.detail}>

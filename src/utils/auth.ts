@@ -179,6 +179,13 @@ export function parseAuthIdentity(content: string): ParsedAuthIdentity {
 }
 
 export function matchesAccountIdentity(account: Account, identity: ParsedAuthIdentity): boolean {
+  if (
+    identity.accountId &&
+    account.accountId?.trim().toLowerCase() === identity.accountId.trim().toLowerCase()
+  ) {
+    return true;
+  }
+
   if (identity.email && account.email?.trim().toLowerCase() === identity.email.trim().toLowerCase()) {
     return true;
   }
@@ -195,13 +202,12 @@ export async function findAccountForAuth(
   currentAuth: string,
 ): Promise<Account | null> {
   const identity = parseAuthIdentity(currentAuth);
-
-  const directMatch = accounts.find((account) => matchesAccountIdentity(account, identity));
-  if (directMatch) {
-    return directMatch;
-  }
-
+  const fallbackMatches: Account[] = [];
   for (const account of accounts) {
+    if (matchesAccountIdentity(account, identity)) {
+      fallbackMatches.push(account);
+    }
+
     const savedAuth = await api.readAccountCredentials(account.id).catch(() => null);
     if (!savedAuth) {
       continue;
@@ -233,5 +239,5 @@ export async function findAccountForAuth(
     }
   }
 
-  return null;
+  return fallbackMatches[0] ?? null;
 }
