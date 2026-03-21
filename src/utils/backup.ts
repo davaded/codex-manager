@@ -1,5 +1,6 @@
 import { Account, AppSettings, BackupBundle, BackupBundleAccount } from "../types";
 import { api } from "./invoke";
+import { hydrateAccounts } from "./accounts";
 
 function assertBackupBundle(value: unknown): asserts value is BackupBundle {
   if (!value || typeof value !== "object") {
@@ -83,10 +84,11 @@ export async function importBackupBundle(
     await api.writeAuthJson(parsed.currentAuthJson);
   }
 
-  await api.saveAccounts({ version: "1.0", accounts: nextAccounts });
+  const hydratedAccounts = await hydrateAccounts(nextAccounts);
+  await api.saveAccounts({ version: "1.0", accounts: hydratedAccounts });
 
   return {
-    accounts: nextAccounts,
+    accounts: hydratedAccounts,
     settings: {
       autoRefreshInterval:
         typeof parsed.settings.autoRefreshInterval === "number"

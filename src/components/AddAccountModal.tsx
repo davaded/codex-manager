@@ -56,8 +56,7 @@ const AddAccountModal: React.FC = () => {
       };
 
       await api.saveAccountCredentials(newAccount.id, result.authJson);
-      const [hydratedAccount] = await hydrateAccounts([newAccount]);
-      const next = [...accounts, hydratedAccount ?? newAccount];
+      const next = await hydrateAccounts([...accounts, newAccount]);
       setAccounts(next);
       await api.saveAccounts({ version: "1.0", accounts: next });
 
