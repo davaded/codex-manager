@@ -4,6 +4,7 @@ import { useAccountStore } from "../store/accountStore";
 import { api } from "../utils/invoke";
 import { Account } from "../types";
 import { hydrateAccounts } from "../utils/accounts";
+import { findAccountForAuth } from "../utils/auth";
 
 const AddAccountModal: React.FC = () => {
   const { setAddModalOpen, accounts, setAccounts, showToast } = useAccountStore();
@@ -43,24 +44,44 @@ const AddAccountModal: React.FC = () => {
     setLoading(true);
     try {
       const result = await api.startOauthFlow();
+      const existingAccount = await findAccountForAuth(accounts, result.authJson);
 
-      const newAccount: Account = {
-        id: uuidv4(),
-        displayName: displayName.trim(),
-        email: result.email,
-        userId: result.userId,
-        isActive: false,
-        createdAt: new Date().toISOString(),
-        lastSwitchedAt: null,
-        sessionInfo: null,
-      };
+      let nextAccounts: Account[];
+      if (existingAccount) {
+        await api.saveAccountCredentials(existingAccount.id, result.authJson);
+        nextAccounts = accounts.map((account) =>
+          account.id === existingAccount.id
+            ? {
+                ...account,
+                displayName: displayName.trim() || account.displayName,
+                email: result.email ?? account.email,
+                accountId: result.accountId ?? account.accountId,
+                userId: result.userId ?? account.userId,
+              }
+            : account,
+        );
+      } else {
+        const newAccount: Account = {
+          id: uuidv4(),
+          displayName: displayName.trim(),
+          email: result.email,
+          accountId: result.accountId,
+          userId: result.userId,
+          isActive: false,
+          createdAt: new Date().toISOString(),
+          lastSwitchedAt: null,
+          sessionInfo: null,
+        };
 
-      await api.saveAccountCredentials(newAccount.id, result.authJson);
-      const next = await hydrateAccounts([...accounts, newAccount]);
+        await api.saveAccountCredentials(newAccount.id, result.authJson);
+        nextAccounts = [...accounts, newAccount];
+      }
+
+      const next = await hydrateAccounts(nextAccounts);
       setAccounts(next);
       await api.saveAccounts({ version: "1.0", accounts: next });
 
-      showToast("账户添加成功");
+      showToast(existingAccount ? "账户授权已更新" : "账户添加成功");
       if (isMountedRef.current) {
         setAddModalOpen(false);
       }

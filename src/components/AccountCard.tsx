@@ -48,6 +48,7 @@ const AccountCard: React.FC<AccountCardProps> = ({
   const isSwitchTarget = switchState.toAccountId === account.id && isSwitching;
   const isQuotaRefreshing = isRefreshing || isRefreshingSelf;
   const statusLabel = isActive ? "当前使用中" : isSwitchTarget ? "正在切换" : "可切换";
+  const shortAccountId = account.accountId ? account.accountId.slice(-8) : null;
 
   useEffect(() => {
     setDraftName(account.displayName);
@@ -168,6 +169,11 @@ const AccountCard: React.FC<AccountCardProps> = ({
               {insight.roleLabel}
             </span>
             <span className="truncate">{account.email ?? account.userId ?? "未绑定邮箱"}</span>
+            {shortAccountId && (
+              <span className="rounded-xl border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600">
+                Team {shortAccountId}
+              </span>
+            )}
           </div>
         </div>
 

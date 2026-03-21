@@ -10,6 +10,7 @@ pub struct Account {
     pub id: String,
     pub display_name: String,
     pub email: Option<String>,
+    pub account_id: Option<String>,
     pub user_id: Option<String>,
     pub is_active: bool,
     pub created_at: String,
@@ -65,6 +66,7 @@ pub struct SwitchResult {
 pub struct OAuthResult {
     pub auth_json: String,
     pub email: Option<String>,
+    pub account_id: Option<String>,
     pub user_id: Option<String>,
 }
 

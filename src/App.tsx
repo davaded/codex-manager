@@ -176,6 +176,7 @@ const App: React.FC = () => {
             ? {
                 ...account,
                 email: identity.email ?? account.email,
+                accountId: identity.accountId ?? account.accountId,
                 userId: identity.userId ?? account.userId,
               }
             : account,
@@ -188,6 +189,7 @@ const App: React.FC = () => {
             identity.userId ??
             `导入账户 ${accounts.length + 1}`,
           email: identity.email,
+          accountId: identity.accountId,
           userId: identity.userId,
           isActive: false,
           createdAt: new Date().toISOString(),

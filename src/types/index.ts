@@ -2,6 +2,7 @@ export interface Account {
   id: string;
   displayName: string;
   email: string | null;
+  accountId: string | null;
   userId: string | null;
   isActive: boolean;
   createdAt: string;
@@ -69,6 +70,7 @@ export interface SwitchResult {
 export interface OAuthResult {
   authJson: string;
   email: string | null;
+  accountId: string | null;
   userId: string | null;
 }
 

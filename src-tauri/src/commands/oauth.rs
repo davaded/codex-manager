@@ -59,11 +59,30 @@ fn extract_email(id_token: &str) -> Option<String> {
         .map(String::from)
 }
 
-fn extract_account_id(access_token: &str) -> Option<String> {
-    decode_jwt_payload(access_token)?
-        .get("chatgpt_account_id")?
+fn extract_claim(payload: &serde_json::Value, key: &str) -> Option<String> {
+    payload.get(key)?.as_str().map(String::from)
+}
+
+fn extract_nested_auth_claim(payload: &serde_json::Value, key: &str) -> Option<String> {
+    payload
+        .get("https://api.openai.com/auth")?
+        .get(key)?
         .as_str()
         .map(String::from)
+}
+
+fn extract_account_id(access_token: &str) -> Option<String> {
+    let payload = decode_jwt_payload(access_token)?;
+    extract_claim(&payload, "chatgpt_account_id")
+        .or_else(|| extract_nested_auth_claim(&payload, "chatgpt_account_id"))
+}
+
+fn extract_user_id(token: &str) -> Option<String> {
+    let payload = decode_jwt_payload(token)?;
+    extract_claim(&payload, "user_id")
+        .or_else(|| extract_nested_auth_claim(&payload, "chatgpt_user_id"))
+        .or_else(|| extract_nested_auth_claim(&payload, "user_id"))
+        .or_else(|| extract_claim(&payload, "sub"))
 }
 
 // ─── Axum callback state ──────────────────────────────────────────────────────
@@ -274,7 +293,12 @@ pub async fn start_oauth_flow(app: AppHandle) -> Result<OAuthResult, String> {
     let tokens = exchange_code(&app, &code, &code_verifier).await?;
 
     let email = tokens.id_token.as_deref().and_then(extract_email);
-    let user_id = extract_account_id(&tokens.access_token);
+    let account_id = extract_account_id(&tokens.access_token);
+    let user_id = tokens
+        .id_token
+        .as_deref()
+        .and_then(extract_user_id)
+        .or_else(|| extract_user_id(&tokens.access_token));
 
     // Build auth.json
     let auth = AuthJson {
@@ -291,6 +315,7 @@ pub async fn start_oauth_flow(app: AppHandle) -> Result<OAuthResult, String> {
     Ok(OAuthResult {
         auth_json,
         email,
+        account_id,
         user_id,
     })
 }

@@ -24,7 +24,20 @@ const Header: React.FC<HeaderProps> = ({
   const { accounts, settings, setSettingsOpen, setAddModalOpen, showToast } =
     useAccountStore();
   const activeAccount = accounts.find((a) => a.isActive);
+  const activeAccountHint = activeAccount?.accountId
+    ? ` · Team ${activeAccount.accountId.slice(-8)}`
+    : "";
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const subtitle = activeAccount
+    ? `当前工作账户：${activeAccount.displayName}${activeAccountHint}`
+    : unmanagedCurrentAuthLabel
+      ? `检测到未托管当前账号：${unmanagedCurrentAuthLabel}`
+      : "集中管理 OAuth 账户、会话快照与切换状态。";
+  const importButtonLabel = isImportingCurrentAuth
+    ? "导入中..."
+    : unmanagedCurrentAuthLabel
+      ? "一键导入当前账号"
+      : "导入当前授权";
 
   const handleExport = async () => {
     try {
@@ -46,18 +59,6 @@ const Header: React.FC<HeaderProps> = ({
     await onImportConfig(file);
     event.target.value = "";
   };
-
-  const subtitle = activeAccount
-    ? `当前工作账户：${activeAccount.displayName}`
-    : unmanagedCurrentAuthLabel
-      ? `检测到未托管当前账号：${unmanagedCurrentAuthLabel}`
-      : "集中管理 OAuth 账户、会话快照与切换状态。";
-
-  const importButtonLabel = isImportingCurrentAuth
-    ? "导入中..."
-    : unmanagedCurrentAuthLabel
-      ? "一键导入当前账号"
-      : "导入当前授权";
 
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
@@ -85,7 +86,10 @@ const Header: React.FC<HeaderProps> = ({
                 {APP_VERSION}
               </span>
             </div>
-            <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
+<<<<<<< HEAD
+            <p className="mt-0.5 text-xs text-slate-500">
+              {subtitle}
+            </p>
           </div>
         </div>
 
