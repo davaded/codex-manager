@@ -86,7 +86,6 @@ const Header: React.FC<HeaderProps> = ({
                 {APP_VERSION}
               </span>
             </div>
-<<<<<<< HEAD
             <p className="mt-0.5 text-xs text-slate-500">
               {subtitle}
             </p>

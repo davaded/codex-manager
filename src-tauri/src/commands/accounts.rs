@@ -1,3 +1,5 @@
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use chrono::{TimeZone, Utc};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -6,7 +8,7 @@ use tokio::fs;
 use uuid::Uuid;
 
 use crate::commands::paths::{app_data_dir, home_codex_dir};
-use crate::models::{AccountsStore, AppSettings};
+use crate::models::{AccountsStore, AppSettings, AuthJson};
 
 /// Validates that account_id is a well-formed UUID to prevent path traversal.
 fn validate_uuid(account_id: &str) -> Result<String, String> {
@@ -43,6 +45,204 @@ fn format_last_refresh(value: i64) -> Option<String> {
         Utc.timestamp_opt(value, 0).single()
     }?;
     Some(dt.to_rfc3339())
+}
+
+fn decode_jwt_payload(token: &str) -> Option<Value> {
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() < 2 {
+        return None;
+    }
+
+    let payload = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
+    serde_json::from_slice(&payload).ok()
+}
+
+fn extract_claim_string(value: &Value, key: &str) -> Option<String> {
+    value.get(key)?.as_str().map(ToString::to_string)
+}
+
+fn extract_nested_auth_claim(value: &Value, key: &str) -> Option<String> {
+    value
+        .get("https://api.openai.com/auth")?
+        .get(key)?
+        .as_str()
+        .map(ToString::to_string)
+}
+
+fn extract_nested_profile_claim(value: &Value, key: &str) -> Option<String> {
+    value
+        .get("https://api.openai.com/profile")?
+        .get(key)?
+        .as_str()
+        .map(ToString::to_string)
+}
+
+fn extract_account_id(auth: &AuthJson) -> Option<String> {
+    let access_claims = auth
+        .tokens
+        .as_ref()?
+        .access_token
+        .as_deref()
+        .and_then(decode_jwt_payload);
+    if let Some(claims) = access_claims.as_ref() {
+        if let Some(value) = extract_claim_string(claims, "chatgpt_account_id") {
+            return Some(value);
+        }
+        if let Some(value) = extract_nested_auth_claim(claims, "chatgpt_account_id") {
+            return Some(value);
+        }
+    }
+
+    let id_claims = auth
+        .tokens
+        .as_ref()?
+        .id_token
+        .as_deref()
+        .and_then(decode_jwt_payload);
+    if let Some(claims) = id_claims.as_ref() {
+        if let Some(value) = extract_claim_string(claims, "chatgpt_account_id") {
+            return Some(value);
+        }
+        if let Some(value) = extract_nested_auth_claim(claims, "chatgpt_account_id") {
+            return Some(value);
+        }
+    }
+
+    None
+}
+
+fn extract_email(auth: &AuthJson) -> Option<String> {
+    let access_claims = auth
+        .tokens
+        .as_ref()?
+        .access_token
+        .as_deref()
+        .and_then(decode_jwt_payload);
+    if let Some(claims) = access_claims.as_ref() {
+        if let Some(value) = extract_claim_string(claims, "email") {
+            return Some(value);
+        }
+        if let Some(value) = extract_nested_profile_claim(claims, "email") {
+            return Some(value);
+        }
+    }
+
+    let id_claims = auth
+        .tokens
+        .as_ref()?
+        .id_token
+        .as_deref()
+        .and_then(decode_jwt_payload);
+    if let Some(claims) = id_claims.as_ref() {
+        if let Some(value) = extract_claim_string(claims, "email") {
+            return Some(value);
+        }
+        if let Some(value) = extract_nested_profile_claim(claims, "email") {
+            return Some(value);
+        }
+    }
+
+    None
+}
+
+fn extract_user_id(auth: &AuthJson) -> Option<String> {
+    let access_claims = auth
+        .tokens
+        .as_ref()?
+        .access_token
+        .as_deref()
+        .and_then(decode_jwt_payload);
+    if let Some(claims) = access_claims.as_ref() {
+        if let Some(value) = extract_claim_string(claims, "user_id") {
+            return Some(value);
+        }
+        if let Some(value) = extract_nested_auth_claim(claims, "chatgpt_user_id") {
+            return Some(value);
+        }
+        if let Some(value) = extract_nested_auth_claim(claims, "user_id") {
+            return Some(value);
+        }
+        if let Some(value) = extract_claim_string(claims, "sub") {
+            return Some(value);
+        }
+    }
+
+    let id_claims = auth
+        .tokens
+        .as_ref()?
+        .id_token
+        .as_deref()
+        .and_then(decode_jwt_payload);
+    if let Some(claims) = id_claims.as_ref() {
+        if let Some(value) = extract_claim_string(claims, "user_id") {
+            return Some(value);
+        }
+        if let Some(value) = extract_nested_auth_claim(claims, "chatgpt_user_id") {
+            return Some(value);
+        }
+        if let Some(value) = extract_nested_auth_claim(claims, "user_id") {
+            return Some(value);
+        }
+        if let Some(value) = extract_claim_string(claims, "sub") {
+            return Some(value);
+        }
+    }
+
+    None
+}
+
+fn normalized_eq(left: Option<&str>, right: &str) -> bool {
+    left.map(|value| value.trim().eq_ignore_ascii_case(right.trim()))
+        .unwrap_or(false)
+}
+
+async fn migrate_account_identities(
+    app: &AppHandle,
+    store: &mut AccountsStore,
+) -> Result<bool, String> {
+    let mut changed = false;
+
+    for account in &mut store.accounts {
+        let path = match credentials_path(app, &account.id) {
+            Ok(path) => path,
+            Err(_) => continue,
+        };
+        if !path.exists() {
+            continue;
+        }
+
+        let content = match read_auth_file_normalized(&path).await {
+            Ok(content) => content,
+            Err(_) => continue,
+        };
+        let auth: AuthJson = match serde_json::from_str(&content) {
+            Ok(auth) => auth,
+            Err(_) => continue,
+        };
+
+        if let Some(email) = extract_email(&auth) {
+            if !normalized_eq(account.email.as_deref(), &email) {
+                account.email = Some(email);
+                changed = true;
+            }
+        }
+
+        if let Some(account_id) = extract_account_id(&auth) {
+            if !normalized_eq(account.account_id.as_deref(), &account_id) {
+                account.account_id = Some(account_id);
+                changed = true;
+            }
+        }
+
+        if let Some(user_id) = extract_user_id(&auth) {
+            if !normalized_eq(account.user_id.as_deref(), &user_id) {
+                account.user_id = Some(user_id);
+                changed = true;
+            }
+        }
+    }
+
+    Ok(changed)
 }
 
 fn normalize_auth_json_content(content: &str) -> Result<(String, bool), String> {
@@ -117,7 +317,13 @@ pub async fn load_accounts(app: AppHandle) -> Result<AccountsStore, String> {
         });
     }
     let content = fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
-    serde_json::from_str(&content).map_err(|e| e.to_string())
+    let mut store: AccountsStore = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    if migrate_account_identities(&app, &mut store).await? {
+        save_accounts(app.clone(), store.clone()).await?;
+    }
+
+    Ok(store)
 }
 
 #[tauri::command]

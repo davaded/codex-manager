@@ -47,6 +47,7 @@ const App: React.FC = () => {
   const [isImportingCurrentAuth, setIsImportingCurrentAuth] = useState(false);
   const [isSmartSwitching, setIsSmartSwitching] = useState(false);
   const [unmanagedCurrentAuthLabel, setUnmanagedCurrentAuthLabel] = useState<string | null>(null);
+  const [hasLoadedAccountsOnce, setHasLoadedAccountsOnce] = useState(false);
   const refreshingRef = useRef(false);
   const settingsLoadedRef = useRef(false);
   const lastSavedSettingsRef = useRef<string | null>(null);
@@ -90,6 +91,11 @@ const App: React.FC = () => {
       const store = await api.loadAccounts();
       const hydrated = await hydrateAccounts(store.accounts);
       setAccounts(hydrated);
+      const currentAuthState = await resolveCurrentAuthState(hydrated);
+      setUnmanagedCurrentAuthLabel(
+        formatAuthIdentityLabel(currentAuthState.unmanagedIdentity),
+      );
+      setHasLoadedAccountsOnce(true);
       const rateLimitFailures = hydrated.filter(
         (account) => !account.rateLimits && account.rateLimitsError,
       );
@@ -252,6 +258,10 @@ const App: React.FC = () => {
   }, [setPlatformCapabilities, setSettings]);
 
   useEffect(() => {
+    if (!hasLoadedAccountsOnce) {
+      return undefined;
+    }
+
     let cancelled = false;
 
     const syncCurrentAuthState = async () => {
@@ -270,7 +280,7 @@ const App: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [accounts]);
+  }, [accounts, hasLoadedAccountsOnce]);
 
   useEffect(() => {
     document.body.classList.toggle("tray-mode", isTrayMode);
