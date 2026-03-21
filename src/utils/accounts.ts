@@ -1,19 +1,49 @@
 import { Account } from "../types";
 import { api } from "./invoke";
-import { findAccountForAuth } from "./auth";
+import {
+  ParsedAuthIdentity,
+  findAccountForAuth,
+  hasAuthIdentity,
+  parseAuthIdentity,
+} from "./auth";
 
-async function resolveActiveAccountId(accounts: Account[]): Promise<string | null> {
+export interface CurrentAuthState {
+  activeAccountId: string | null;
+  unmanagedIdentity: ParsedAuthIdentity | null;
+  preserveStoredActive: boolean;
+}
+
+export async function resolveCurrentAuthState(accounts: Account[]): Promise<CurrentAuthState> {
   const storedActiveAccountId = accounts.find((account) => account.isActive)?.id ?? null;
   const currentAuth = await api.readAuthJson().catch(() => null);
   if (!currentAuth) {
-    return storedActiveAccountId;
+    return {
+      activeAccountId: storedActiveAccountId,
+      unmanagedIdentity: null,
+      preserveStoredActive: true,
+    };
   }
+
   const matched = await findAccountForAuth(accounts, currentAuth);
-  return matched?.id ?? storedActiveAccountId;
+  if (matched) {
+    return {
+      activeAccountId: matched.id,
+      unmanagedIdentity: null,
+      preserveStoredActive: false,
+    };
+  }
+
+  const identity = parseAuthIdentity(currentAuth);
+  return {
+    activeAccountId: null,
+    unmanagedIdentity: hasAuthIdentity(identity) ? identity : null,
+    preserveStoredActive: false,
+  };
 }
 
 export async function hydrateAccounts(accounts: Account[]): Promise<Account[]> {
-  const activeAccountId = await resolveActiveAccountId(accounts);
+  const currentAuthState = await resolveCurrentAuthState(accounts);
+  const { activeAccountId, preserveStoredActive } = currentAuthState;
   const activeSessionInfo = activeAccountId
     ? await api.getCurrentSessionsInfo().catch(() => null)
     : null;
@@ -30,7 +60,11 @@ export async function hydrateAccounts(accounts: Account[]): Promise<Account[]> {
           rateLimits: null,
           rateLimitsError: error instanceof Error ? error.message : String(error),
         }));
-      const isActive = activeAccountId ? account.id === activeAccountId : account.isActive;
+      const isActive = preserveStoredActive
+        ? account.isActive
+        : activeAccountId
+          ? account.id === activeAccountId
+          : false;
 
       if (isActive) {
         return {

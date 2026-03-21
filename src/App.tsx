@@ -10,9 +10,13 @@ import Toast from "./components/Toast";
 import ConfirmDialog from "./components/ConfirmDialog";
 import { useAccountStore } from "./store/accountStore";
 import { api } from "./utils/invoke";
-import { hydrateAccounts } from "./utils/accounts";
+import { hydrateAccounts, resolveCurrentAuthState } from "./utils/accounts";
 import { importBackupBundle } from "./utils/backup";
-import { findAccountForAuth, parseAuthIdentity } from "./utils/auth";
+import {
+  findAccountForAuth,
+  formatAuthIdentityLabel,
+  parseAuthIdentity,
+} from "./utils/auth";
 import { getBestQuotaAccount } from "./utils/dashboard";
 import { useAccountSwitch } from "./hooks/useAccountSwitch";
 import { Account } from "./types";
@@ -42,6 +46,7 @@ const App: React.FC = () => {
   const [refreshingAccountIds, setRefreshingAccountIds] = useState<string[]>([]);
   const [isImportingCurrentAuth, setIsImportingCurrentAuth] = useState(false);
   const [isSmartSwitching, setIsSmartSwitching] = useState(false);
+  const [unmanagedCurrentAuthLabel, setUnmanagedCurrentAuthLabel] = useState<string | null>(null);
   const refreshingRef = useRef(false);
   const settingsLoadedRef = useRef(false);
   const lastSavedSettingsRef = useRef<string | null>(null);
@@ -245,6 +250,27 @@ const App: React.FC = () => {
   }, [setPlatformCapabilities, setSettings]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const syncCurrentAuthState = async () => {
+      const currentAuthState = await resolveCurrentAuthState(accounts);
+      if (cancelled) {
+        return;
+      }
+
+      setUnmanagedCurrentAuthLabel(
+        formatAuthIdentityLabel(currentAuthState.unmanagedIdentity),
+      );
+    };
+
+    void syncCurrentAuthState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accounts]);
+
+  useEffect(() => {
     document.body.classList.toggle("tray-mode", isTrayMode);
     return () => document.body.classList.remove("tray-mode");
   }, [isTrayMode]);
@@ -371,6 +397,7 @@ const App: React.FC = () => {
           onSmartSwitch={handleSmartSwitch}
           isImportingCurrentAuth={isImportingCurrentAuth}
           isSmartSwitching={isSmartSwitching}
+          unmanagedCurrentAuthLabel={unmanagedCurrentAuthLabel}
         />
       )}
       <main className={isTrayMode ? "" : "flex-1 overflow-auto px-4 pb-8 pt-4 sm:px-6 sm:pt-3 lg:px-8"}>
@@ -380,6 +407,7 @@ const App: React.FC = () => {
             refreshingAccountIds={refreshingAccountIds}
             isImportingCurrentAuth={isImportingCurrentAuth}
             isSmartSwitching={isSmartSwitching}
+            unmanagedCurrentAuthLabel={unmanagedCurrentAuthLabel}
             onRefreshUsage={() => refreshAccounts(false)}
             onRefreshAccount={refreshAccount}
             onImportCurrentAuth={handleImportCurrentAuth}

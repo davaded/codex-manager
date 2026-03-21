@@ -8,6 +8,7 @@ interface HeaderProps {
   onSmartSwitch: () => Promise<void>;
   isImportingCurrentAuth: boolean;
   isSmartSwitching: boolean;
+  unmanagedCurrentAuthLabel: string | null;
 }
 
 const APP_VERSION = "v0.1.0";
@@ -18,6 +19,7 @@ const Header: React.FC<HeaderProps> = ({
   onSmartSwitch,
   isImportingCurrentAuth,
   isSmartSwitching,
+  unmanagedCurrentAuthLabel,
 }) => {
   const { accounts, settings, setSettingsOpen, setAddModalOpen, showToast } =
     useAccountStore();
@@ -45,6 +47,18 @@ const Header: React.FC<HeaderProps> = ({
     event.target.value = "";
   };
 
+  const subtitle = activeAccount
+    ? `当前工作账户：${activeAccount.displayName}`
+    : unmanagedCurrentAuthLabel
+      ? `检测到未托管当前账号：${unmanagedCurrentAuthLabel}`
+      : "集中管理 OAuth 账户、会话快照与切换状态。";
+
+  const importButtonLabel = isImportingCurrentAuth
+    ? "导入中..."
+    : unmanagedCurrentAuthLabel
+      ? "一键导入当前账号"
+      : "导入当前授权";
+
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-[1480px] items-center justify-between gap-3 px-4 py-3.5 sm:px-6 lg:px-8">
@@ -71,11 +85,7 @@ const Header: React.FC<HeaderProps> = ({
                 {APP_VERSION}
               </span>
             </div>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {activeAccount
-                ? `当前工作账户：${activeAccount.displayName}`
-                : "集中管理 OAuth 账户、会话快照与切换状态"}
-            </p>
+            <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
           </div>
         </div>
 
@@ -101,7 +111,7 @@ const Header: React.FC<HeaderProps> = ({
                 d="M4 12l4.5 4.5L20 5m-8 14V9"
               />
             </svg>
-            {isImportingCurrentAuth ? "导入中..." : "导入当前授权"}
+            {importButtonLabel}
           </button>
 
           <button
@@ -188,13 +198,35 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
+      {unmanagedCurrentAuthLabel && (
+        <div className="mx-auto w-full max-w-[1480px] px-4 pb-3 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-3 rounded-[22px] border border-amber-200 bg-[linear-gradient(135deg,rgba(255,247,237,0.96),rgba(254,240,138,0.2))] px-4 py-3 text-sm text-amber-950 shadow-[0_20px_45px_-34px_rgba(217,119,6,0.45)] sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold tracking-[-0.02em]">
+                检测到未托管当前账号
+              </p>
+              <p className="mt-1 text-amber-900/80">
+                当前 auth.json 属于 {unmanagedCurrentAuthLabel}，可以一键导入并纳入统一管理。
+              </p>
+            </div>
+            <button
+              onClick={() => void onImportCurrentAuth()}
+              disabled={isImportingCurrentAuth}
+              className="inline-flex items-center justify-center rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {importButtonLabel}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto w-full max-w-[1480px] px-4 pb-2 sm:hidden">
         <button
           onClick={() => void onImportCurrentAuth()}
           disabled={isImportingCurrentAuth}
           className="mr-2 rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition-all hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isImportingCurrentAuth ? "导入中..." : "导入当前授权"}
+          {unmanagedCurrentAuthLabel && !isImportingCurrentAuth ? "一键导入" : importButtonLabel}
         </button>
         <button
           onClick={() => void onSmartSwitch()}

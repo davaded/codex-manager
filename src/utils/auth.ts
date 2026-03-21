@@ -11,6 +11,18 @@ export interface ParsedAuthIdentity {
   planType: string | null;
 }
 
+export function hasAuthIdentity(identity: ParsedAuthIdentity): boolean {
+  return Boolean(identity.email || identity.userId || identity.accountId);
+}
+
+export function formatAuthIdentityLabel(identity: ParsedAuthIdentity | null): string | null {
+  if (!identity) {
+    return null;
+  }
+
+  return identity.email ?? identity.userId ?? identity.accountId ?? null;
+}
+
 function decodeJwtPayload(token: string | null | undefined): Record<string, unknown> | null {
   if (!token) {
     return null;
