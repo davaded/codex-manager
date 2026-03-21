@@ -2,7 +2,12 @@
   "name": "codex-manager",
   "version": "1.0.0",
   "type": "module",
+  "bin": {
+    "codex-manager": "./bin/codex-manager.mjs",
+    "codex-manager-cli": "./bin/codex-manager.mjs"
+  },
   "scripts": {
+    "cli": "node ./bin/codex-manager.mjs",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",

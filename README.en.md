@@ -54,6 +54,7 @@ Releases: https://github.com/davaded/codex-manager/releases
 
 - On first launch, your OS may ask you to confirm that the app is safe to open.
 - The app reads and writes `~/.codex/auth.json`, so Codex CLI should already be installed and working.
+- On Windows, reopen your terminal after installation so the new `codex-manager` command is picked up from `PATH`.
 
 ## Quick Start
 
@@ -61,6 +62,37 @@ Releases: https://github.com/davaded/codex-manager/releases
 2. Import the current auth or add an account via OAuth.
 3. Refresh usage.
 4. Switch manually or use Smart Switch.
+
+## Command Line Switching
+
+You can also switch managed accounts from the command line:
+
+```bash
+codex-manager list
+codex-manager switch work
+codex-manager switch dev@company.com
+```
+
+The CLI updates both the managed `accounts.json` state and the live `~/.codex/auth.json`.
+
+Just like the desktop flow, if Codex CLI or the desktop app is already running, restart it after switching so the new auth takes effect.
+
+Packaged builds expose the command like this:
+
+- Windows `.exe` / `.msi`: the installer adds `codex-manager` to `PATH`
+- Linux `.deb` / `.rpm`: the package-installed binary is available directly as `codex-manager`
+- Linux `.AppImage`: create your own launcher or symlink if you want a global `codex-manager` command
+- macOS `.dmg`: drag-and-drop installs cannot modify your shell `PATH`, so create a symlink once:
+
+```bash
+sudo ln -sf "/Applications/codex-manager.app/Contents/MacOS/codex-manager" /usr/local/bin/codex-manager
+```
+
+If you are running from the repo locally, you can expose the command with:
+
+```bash
+npm link
+```
 
 ## Active Account Detection
 

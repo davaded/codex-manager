@@ -28,6 +28,10 @@ dirs = "5"
 anyhow = "1"
 thiserror = "1"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+winreg = "0.55"
+
 [profile.dev]
 incremental = true
 
