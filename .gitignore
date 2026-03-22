@@ -33,3 +33,5 @@ npm-debug.log*
 # Local research artifacts
 .tmp-codex-schema/
 .tmp-codex-tools-inspect/
+specs/
+.claude/*.local.json

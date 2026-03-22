@@ -2,6 +2,18 @@ import { Account, AppSettings, BackupBundle, BackupBundleAccount } from "../type
 import { api } from "./invoke";
 import { hydrateAccounts } from "./accounts";
 
+async function sequence<T>(items: T[], fn: (item: T) => Promise<void>): Promise<void> {
+  for (const item of items) {
+    await fn(item);
+  }
+}
+
+type RestoreOperation = {
+  type: "credential";
+  accountId: string;
+  previousValue: string | null;
+};
+
 function assertBackupBundle(value: unknown): asserts value is BackupBundle {
   if (!value || typeof value !== "object") {
     throw new Error("备份文件格式无效");
@@ -62,49 +74,93 @@ export async function importBackupBundle(
   const nextAccounts = parsed.accounts
     .map((entry) => entry.account)
     .filter((account): account is Account => Boolean(account?.id && account.displayName));
+  const nextAccountIds = new Set(nextAccounts.map((account) => account.id));
+  const removedAccounts = existingAccounts.filter((account) => !nextAccountIds.has(account.id));
 
-  await Promise.all(
-    existingAccounts
-      .filter((account) => !nextAccounts.some((item) => item.id === account.id))
-      .map(async (account) => {
-        await api.deleteAccountCredentials(account.id).catch(() => undefined);
-        await api.deleteAccountSessions(account.id).catch(() => undefined);
-      }),
-  );
+  const previousCredentials = new Map<string, string | null>();
+  const shouldRestoreCurrentAuth =
+    Boolean(parsed.currentAuthJson) && nextAccounts.some((account) => account.isActive);
+  const previousAuthJson = shouldRestoreCurrentAuth
+    ? await api.readAuthJson().catch(() => null)
+    : null;
 
-  await Promise.all(
-    parsed.accounts.map(async ({ account, credentials }) => {
-      if (credentials) {
-        await api.saveAccountCredentials(account.id, credentials);
-      }
-    }),
-  );
-
-  if (parsed.currentAuthJson && nextAccounts.some((account) => account.isActive)) {
-    await api.writeAuthJson(parsed.currentAuthJson);
+  for (const { account } of parsed.accounts) {
+    if (account?.id) {
+      previousCredentials.set(
+        account.id,
+        await api.readAccountCredentials(account.id).catch(() => null),
+      );
+    }
   }
 
-  const hydratedAccounts = await hydrateAccounts(nextAccounts);
-  await api.saveAccounts({ version: "1.0", accounts: hydratedAccounts });
+  const completedOperations: RestoreOperation[] = [];
+  let authJsonRestored = false;
 
-  return {
-    accounts: hydratedAccounts,
-    settings: {
-      autoRefreshInterval:
-        typeof parsed.settings.autoRefreshInterval === "number"
-          ? parsed.settings.autoRefreshInterval
-          : 0,
-      autoRestartCodexAfterSwitch:
-        typeof parsed.settings.autoRestartCodexAfterSwitch === "boolean"
-          ? parsed.settings.autoRestartCodexAfterSwitch
-          : true,
-      theme:
-        parsed.settings.theme === "light" ||
-        parsed.settings.theme === "dark" ||
-        parsed.settings.theme === "system"
-          ? parsed.settings.theme
-          : "system",
-      proxyUrl: typeof parsed.settings.proxyUrl === "string" ? parsed.settings.proxyUrl : "",
-    },
-  };
+  try {
+    await sequence(parsed.accounts, async ({ account, credentials }) => {
+      if (!account?.id) return;
+      if (credentials) {
+        await api.saveAccountCredentials(account.id, credentials);
+      } else {
+        await api.deleteAccountCredentials(account.id).catch(() => undefined);
+      }
+      completedOperations.push({
+        type: "credential",
+        accountId: account.id,
+        previousValue: previousCredentials.get(account.id) ?? null,
+      });
+    });
+
+    if (shouldRestoreCurrentAuth && parsed.currentAuthJson) {
+      await api.writeAuthJson(parsed.currentAuthJson);
+      authJsonRestored = true;
+    }
+
+    const hydratedAccounts = await hydrateAccounts(nextAccounts);
+    await api.saveAccounts({ version: "1.0", accounts: hydratedAccounts });
+
+    await sequence(removedAccounts, async (account) => {
+      await api.deleteAccountCredentials(account.id).catch(() => undefined);
+      await api.deleteAccountSessions(account.id).catch(() => undefined);
+    });
+
+    return {
+      accounts: hydratedAccounts,
+      settings: {
+        autoRefreshInterval:
+          typeof parsed.settings.autoRefreshInterval === "number"
+            ? parsed.settings.autoRefreshInterval
+            : 0,
+        autoRestartCodexAfterSwitch:
+          typeof parsed.settings.autoRestartCodexAfterSwitch === "boolean"
+            ? parsed.settings.autoRestartCodexAfterSwitch
+            : true,
+        theme:
+          parsed.settings.theme === "light" ||
+          parsed.settings.theme === "dark" ||
+          parsed.settings.theme === "system"
+            ? parsed.settings.theme
+            : "system",
+        proxyUrl: typeof parsed.settings.proxyUrl === "string" ? parsed.settings.proxyUrl : "",
+      },
+    };
+  } catch (error) {
+    await api.saveAccounts({ version: "1.0", accounts: existingAccounts }).catch(() => undefined);
+
+    await sequence(completedOperations, async (op) => {
+      if (op.type === "credential") {
+        if (op.previousValue) {
+          await api.saveAccountCredentials(op.accountId, op.previousValue).catch(() => undefined);
+        } else {
+          await api.deleteAccountCredentials(op.accountId).catch(() => undefined);
+        }
+      }
+    });
+
+    if (authJsonRestored && previousAuthJson) {
+      await api.writeAuthJson(previousAuthJson).catch(() => undefined);
+    }
+
+    throw error;
+  }
 }

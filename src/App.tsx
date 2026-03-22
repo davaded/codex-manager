@@ -29,7 +29,6 @@ type ConfirmState =
 const App: React.FC = () => {
   const {
     setAccounts,
-    updateAccount,
     isAddModalOpen,
     isSettingsOpen,
     accounts,
@@ -140,12 +139,55 @@ const App: React.FC = () => {
 
     setRefreshingAccountIds((current) => [...current, accountId]);
     try {
-      const [hydrated] = await hydrateAccounts([target]);
-      if (!hydrated) {
-        throw new Error("未获取到账号数据");
-      }
+      const currentAuthState = await resolveCurrentAuthState(accounts);
+      const activeSessionInfo =
+        currentAuthState.activeAccountId === accountId
+          ? await api.getCurrentSessionsInfo().catch(() => null)
+          : null;
+      const rateLimitResult = await api
+        .readAccountRateLimits(accountId)
+        .then((rateLimits) => ({
+          rateLimits,
+          rateLimitsError: null,
+        }))
+        .catch((error: unknown) => ({
+          rateLimits: null,
+          rateLimitsError: error instanceof Error ? error.message : String(error),
+        }));
+      const isActive = currentAuthState.preserveStoredActive
+        ? target.isActive
+        : currentAuthState.activeAccountId
+          ? currentAuthState.activeAccountId === accountId
+          : false;
+      const hydrated: Account = {
+        ...target,
+        isActive,
+        sessionInfo: isActive ? activeSessionInfo ?? target.sessionInfo : target.sessionInfo,
+        rateLimits: rateLimitResult.rateLimits,
+        rateLimitsError: rateLimitResult.rateLimitsError,
+      };
+      const nextAccounts = accounts.map((account) => {
+        if (account.id === accountId) {
+          return hydrated;
+        }
 
-      updateAccount(accountId, hydrated);
+        if (currentAuthState.preserveStoredActive) {
+          return account;
+        }
+
+        const shouldBeActive = currentAuthState.activeAccountId === account.id;
+        return account.isActive === shouldBeActive
+          ? account
+          : { ...account, isActive: shouldBeActive };
+      });
+      const activeChanged = nextAccounts.some(
+        (account, index) => account.isActive !== accounts[index]?.isActive,
+      );
+
+      setAccounts(nextAccounts);
+      if (activeChanged) {
+        await api.saveAccounts({ version: "1.0", accounts: nextAccounts });
+      }
 
       if (!hydrated.rateLimits && hydrated.rateLimitsError) {
         showToast(`刷新失败: ${hydrated.rateLimitsError}`);

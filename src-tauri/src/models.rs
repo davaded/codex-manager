@@ -73,15 +73,22 @@ pub struct OAuthResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
+    #[serde(default)]
     pub auto_refresh_interval: u32,
     #[serde(default = "default_auto_restart_codex_after_switch")]
     pub auto_restart_codex_after_switch: bool,
+    #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default)]
     pub proxy_url: String,
 }
 
 fn default_auto_restart_codex_after_switch() -> bool {
     true
+}
+
+fn default_theme() -> String {
+    "system".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

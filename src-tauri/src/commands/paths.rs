@@ -2,6 +2,8 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 use tauri::Manager;
 
+const LEGACY_APP_IDENTIFIER: &str = "com.codex-manager.app";
+
 pub fn home_codex_dir() -> Result<PathBuf, String> {
     dirs::home_dir()
         .map(|h| h.join(".codex"))
@@ -9,7 +11,18 @@ pub fn home_codex_dir() -> Result<PathBuf, String> {
 }
 
 pub fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path().app_data_dir().map_err(|e| e.to_string())
+    let current = app.path().app_data_dir().map_err(|e| e.to_string())?;
+
+    if current.exists() {
+        return Ok(current);
+    }
+
+    let legacy = current
+        .parent()
+        .map(|parent| parent.join(LEGACY_APP_IDENTIFIER))
+        .filter(|path| path.exists());
+
+    Ok(legacy.unwrap_or(current))
 }
 
 #[tauri::command]

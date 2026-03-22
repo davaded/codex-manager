@@ -24,7 +24,7 @@ function getIcon(
 }
 
 const SwitchProgress: React.FC = () => {
-  const { switchState, accounts } = useAccountStore();
+  const { switchState, accounts, setSwitchState } = useAccountStore();
   const { phase } = switchState;
 
   if (phase === "idle") return null;
@@ -78,9 +78,28 @@ const SwitchProgress: React.FC = () => {
         </div>
 
         {phase === "error" && switchState.error && (
-          <p className="mt-4 text-xs text-red-600">
-            {switchState.error}
-          </p>
+          <>
+            <p className="mt-4 text-xs text-red-600">
+              {switchState.error}
+            </p>
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() =>
+                  setSwitchState({
+                    phase: "idle",
+                    fromAccountId: null,
+                    toAccountId: null,
+                    error: null,
+                    snapshotResult: null,
+                    restoreResult: null,
+                  })
+                }
+                className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+              >
+                关闭
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>

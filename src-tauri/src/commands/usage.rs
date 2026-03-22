@@ -142,6 +142,68 @@ fn refresh_token(auth: &AuthJson) -> Result<&str, String> {
         .ok_or_else(|| "auth.json 缺少 refresh_token".to_string())
 }
 
+fn id_token(auth: &AuthJson) -> Option<&str> {
+    auth.tokens
+        .as_ref()
+        .and_then(|tokens| tokens.id_token.as_deref())
+}
+
+fn auth_tokens_match(left: &AuthJson, right: &AuthJson) -> bool {
+    [
+        (
+            left.tokens
+                .as_ref()
+                .and_then(|tokens| tokens.refresh_token.as_deref()),
+            right
+                .tokens
+                .as_ref()
+                .and_then(|tokens| tokens.refresh_token.as_deref()),
+        ),
+        (
+            left.tokens
+                .as_ref()
+                .and_then(|tokens| tokens.access_token.as_deref()),
+            right
+                .tokens
+                .as_ref()
+                .and_then(|tokens| tokens.access_token.as_deref()),
+        ),
+        (id_token(left), id_token(right)),
+    ]
+    .into_iter()
+    .any(|(left_token, right_token)| {
+        matches!((left_token, right_token), (Some(left), Some(right)) if left == right)
+    })
+}
+
+async fn sync_live_auth_after_refresh(
+    previous_auth: &AuthJson,
+    refreshed_auth: &AuthJson,
+) -> Result<(), String> {
+    let current_auth_json = match accounts::read_auth_json().await {
+        Ok(content) => content,
+        Err(err) => {
+            eprintln!("sync_live_auth_after_refresh: 读取 live auth.json 失败: {err}");
+            return Ok(());
+        }
+    };
+    let current_auth: AuthJson = match serde_json::from_str(&current_auth_json) {
+        Ok(auth) => auth,
+        Err(err) => {
+            eprintln!("sync_live_auth_after_refresh: 解析 live auth.json 失败: {err}");
+            return Ok(());
+        }
+    };
+
+    if !auth_tokens_match(&current_auth, previous_auth) {
+        return Ok(());
+    }
+
+    let serialized = serde_json::to_string_pretty(refreshed_auth)
+        .map_err(|e| format!("auth.json 序列化失败: {e}"))?;
+    accounts::write_auth_json(serialized).await
+}
+
 fn resolve_chatgpt_base_origin() -> String {
     let base_url =
         read_chatgpt_base_url_from_config().unwrap_or_else(|| DEFAULT_CHATGPT_BASE_URL.to_string());
@@ -436,6 +498,7 @@ pub async fn read_account_rate_limits(
     match request_usage_payload(&client, access_token(&auth)?, &resolved_account_id).await {
         Ok(payload) => Ok(map_usage_payload(payload)),
         Err(err) if err.should_refresh_auth => {
+            let previous_auth = auth.clone();
             refresh_auth_tokens(&client, &mut auth).await?;
             resolved_account_id = extract_account_id(&auth)
                 .ok_or_else(|| "刷新后仍无法识别 chatgpt_account_id".to_string())?;
@@ -444,6 +507,7 @@ pub async fn read_account_rate_limits(
             fs::write(&credentials_path, serialized)
                 .await
                 .map_err(|e| format!("更新账号凭证失败: {e}"))?;
+            let _ = sync_live_auth_after_refresh(&previous_auth, &auth).await;
             let payload =
                 request_usage_payload(&client, access_token(&auth)?, &resolved_account_id)
                     .await
