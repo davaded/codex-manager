@@ -6,3 +6,9 @@ if (-not (Test-Path $cargo)) {
 }
 
 & $cargo build --manifest-path src-tauri\Cargo.toml --release --bin codex-manager-cli
+
+$cliBinary = (Resolve-Path "src-tauri\target\release\codex-manager-cli.exe").Path
+$cliDefine = Join-Path (Resolve-Path "src-tauri\windows").Path "cli-path.nsh"
+@(
+  "!define CLIBINARYSRCPATH `"$cliBinary`""
+) | Set-Content -Path $cliDefine -Encoding ASCII

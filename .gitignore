@@ -7,6 +7,7 @@ dist-ssr/
 
 # Tauri build
 src-tauri/target/
+src-tauri/windows/cli-path.nsh
 
 # Environment
 .env
