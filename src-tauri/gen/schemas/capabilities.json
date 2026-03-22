@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default capabilities for codex-manager","local":true,"windows":["main","tray"],"permissions":["core:default","shell:allow-open"]}}
+{"default":{"identifier":"default","description":"Default capabilities for codex-manager","local":true,"windows":["main","tray"],"permissions":["core:default"]}}

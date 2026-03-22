@@ -3,7 +3,6 @@
   "description": "Default capabilities for codex-manager",
   "windows": ["main", "tray"],
   "permissions": [
-    "core:default",
-    "shell:allow-open"
+    "core:default"
   ]
 }

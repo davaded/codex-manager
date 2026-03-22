@@ -11,7 +11,19 @@ use tauri::{
     menu::MenuEvent,
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
-    Manager, PhysicalPosition, Position, Rect, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+    Manager, PhysicalPosition, Position, Rect, UserAttentionType, WebviewUrl,
+    WebviewWindowBuilder, WindowEvent,
+};
+#[cfg(target_os = "windows")]
+use windows::Win32::UI::{
+    Input::KeyboardAndMouse::{
+        SendInput, MapVirtualKeyW, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, MAPVK_VK_TO_VSC, VK_LMENU, VK_MENU,
+    },
+    WindowsAndMessaging::{
+        BringWindowToTop, IsIconic, IsWindow, SetForegroundWindow, ShowWindow, SW_RESTORE,
+        SW_SHOW,
+    },
 };
 
 /// Global mutex to serialize all operations that mutate live session/auth files,
@@ -70,11 +82,144 @@ fn should_suppress_tray_click(state: &Arc<Mutex<TrayPanelController>>) -> bool {
 }
 
 fn show_window(app: &tauri::AppHandle, label: &str) {
-    if let Some(window) = app.get_webview_window(label) {
-        let _ = window.unminimize();
+    if let Some(window) = get_or_create_window(app, label) {
+        if is_window_minimized(&window) {
+            let _ = window.unminimize();
+        }
         let _ = window.show();
         let _ = window.set_focus();
+        #[cfg(target_os = "windows")]
+        {
+            let _ = force_window_active(&window);
+            let _ = window.request_user_attention(Some(UserAttentionType::Informational));
+            let _ = window.set_always_on_top(true);
+            let window = window.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(180)).await;
+                let _ = window.set_always_on_top(false);
+            });
+        }
     }
+}
+
+fn get_or_create_window(app: &tauri::AppHandle, label: &str) -> Option<tauri::WebviewWindow> {
+    if label == "main" {
+        ensure_main_window(app)
+    } else {
+        app.get_webview_window(label)
+    }
+}
+
+fn ensure_main_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
+    if let Some(window) = app.get_webview_window("main") {
+        return Some(window);
+    }
+
+    let config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|window| window.label == "main")?;
+    let window = WebviewWindowBuilder::from_config(app, config)
+        .ok()?
+        .build()
+        .ok()?;
+    bind_main_window_events(&window);
+    Some(window)
+}
+
+fn bind_main_window_events(window: &tauri::WebviewWindow) {
+    let main_window = window.clone();
+    window.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = main_window.hide();
+        }
+    });
+}
+
+fn is_window_minimized(window: &tauri::WebviewWindow) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(hwnd) = window.hwnd() {
+            unsafe {
+                return IsIconic(hwnd).as_bool();
+            }
+        }
+    }
+
+    window.is_minimized().unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn force_window_active(window: &tauri::WebviewWindow) -> bool {
+    let Ok(hwnd) = window.hwnd() else {
+        return false;
+    };
+
+    if unsafe { !IsWindow(Some(hwnd)).as_bool() } {
+        return false;
+    }
+
+    unsafe {
+        let _ = if IsIconic(hwnd).as_bool() {
+            ShowWindow(hwnd, SW_RESTORE)
+        } else {
+            ShowWindow(hwnd, SW_SHOW)
+        };
+    }
+
+    let brought_to_top = unsafe { BringWindowToTop(hwnd).is_ok() };
+    let activated = unsafe { SetForegroundWindow(hwnd).as_bool() };
+    if activated {
+        return true;
+    }
+
+    // This mirrors the foreground-stealing workaround used by Tao on Windows,
+    // but keeps construction and failure handling outside the raw API calls.
+    let alt_sc = unsafe { MapVirtualKeyW(u32::from(VK_MENU.0), MAPVK_VK_TO_VSC) };
+    if alt_sc == 0 {
+        return brought_to_top;
+    }
+
+    let inputs = build_alt_menu_inputs(alt_sc as u16);
+    let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as _) };
+    if sent != inputs.len() as u32 {
+        return brought_to_top;
+    }
+
+    unsafe { SetForegroundWindow(hwnd).as_bool() || brought_to_top }
+}
+
+#[cfg(target_os = "windows")]
+fn build_alt_menu_inputs(scan_code: u16) -> [INPUT; 2] {
+    [
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VK_LMENU,
+                    wScan: scan_code,
+                    dwFlags: KEYEVENTF_EXTENDEDKEY,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        },
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VK_LMENU,
+                    wScan: scan_code,
+                    dwFlags: KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        },
+    ]
 }
 
 fn hide_window(app: &tauri::AppHandle, label: &str) {
@@ -126,61 +271,72 @@ fn rect_size_to_physical(rect: &Rect, scale_factor: f64) -> tauri::PhysicalSize<
     }
 }
 
-fn resolve_anchor_monitor(
+fn resolve_monitor_for_physical_point(
     window: &tauri::WebviewWindow,
-    anchor: &Rect,
-) -> Option<(tauri::Monitor, PhysicalPosition<i32>, tauri::PhysicalSize<u32>)> {
-    let monitors = window.available_monitors().ok()?;
+    point: PhysicalPosition<i32>,
+) -> Option<tauri::Monitor> {
+    if let Some(monitor) = window
+        .monitor_from_point(f64::from(point.x), f64::from(point.y))
+        .ok()
+        .flatten()
+    {
+        return Some(monitor);
+    }
 
-    let mut best_match: Option<(tauri::Monitor, PhysicalPosition<i32>, tauri::PhysicalSize<u32>, i64)> =
-        None;
+    let monitors = window.available_monitors().ok()?;
+    let mut best_match: Option<(tauri::Monitor, i64)> = None;
 
     for monitor in monitors {
-        let anchor_position =
-            rect_position_to_physical(anchor, monitor.scale_factor());
-        let anchor_size = rect_size_to_physical(anchor, monitor.scale_factor());
         let monitor_position = monitor.position();
         let monitor_size = monitor.size();
         let monitor_right = monitor_position.x + i32::try_from(monitor_size.width).ok()?;
         let monitor_bottom = monitor_position.y + i32::try_from(monitor_size.height).ok()?;
-        let anchor_center_x =
-            anchor_position.x + i32::try_from(anchor_size.width).unwrap_or_default() / 2;
-        let anchor_center_y =
-            anchor_position.y + i32::try_from(anchor_size.height).unwrap_or_default() / 2;
-        let inside = anchor_center_x >= monitor_position.x
-            && anchor_center_x <= monitor_right
-            && anchor_center_y >= monitor_position.y
-            && anchor_center_y <= monitor_bottom;
 
-        let distance = if inside {
-            0
+        let dx = if point.x < monitor_position.x {
+            i64::from(monitor_position.x - point.x)
+        } else if point.x > monitor_right {
+            i64::from(point.x - monitor_right)
         } else {
-            let dx = if anchor_center_x < monitor_position.x {
-                i64::from(monitor_position.x - anchor_center_x)
-            } else if anchor_center_x > monitor_right {
-                i64::from(anchor_center_x - monitor_right)
-            } else {
-                0
-            };
-            let dy = if anchor_center_y < monitor_position.y {
-                i64::from(monitor_position.y - anchor_center_y)
-            } else if anchor_center_y > monitor_bottom {
-                i64::from(anchor_center_y - monitor_bottom)
-            } else {
-                0
-            };
-            dx * dx + dy * dy
+            0
         };
+        let dy = if point.y < monitor_position.y {
+            i64::from(monitor_position.y - point.y)
+        } else if point.y > monitor_bottom {
+            i64::from(point.y - monitor_bottom)
+        } else {
+            0
+        };
+        let distance = dx * dx + dy * dy;
 
         match &best_match {
-            Some((_, _, _, best_distance)) if distance >= *best_distance => {}
-            _ => {
-                best_match = Some((monitor, anchor_position, anchor_size, distance));
-            }
+            Some((_, best_distance)) if distance >= *best_distance => {}
+            _ => best_match = Some((monitor, distance)),
         }
     }
 
-    best_match.map(|(monitor, anchor_position, anchor_size, _)| (monitor, anchor_position, anchor_size))
+    best_match.map(|(monitor, _)| monitor)
+}
+
+fn resolve_anchor_monitor(
+    window: &tauri::WebviewWindow,
+    anchor: &Rect,
+) -> Option<(tauri::Monitor, PhysicalPosition<i32>, tauri::PhysicalSize<u32>)> {
+    let fallback_monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten())?;
+    let fallback_scale = fallback_monitor.scale_factor();
+    let anchor_position = rect_position_to_physical(anchor, fallback_scale);
+    let anchor_size = rect_size_to_physical(anchor, fallback_scale);
+    let anchor_center = PhysicalPosition::new(
+        anchor_position.x + i32::try_from(anchor_size.width).unwrap_or_default() / 2,
+        anchor_position.y + i32::try_from(anchor_size.height).unwrap_or_default() / 2,
+    );
+    let monitor =
+        resolve_monitor_for_physical_point(window, anchor_center).unwrap_or(fallback_monitor);
+
+    Some((monitor, anchor_position, anchor_size))
 }
 
 fn position_tray_panel(window: &tauri::WebviewWindow, anchor: &Rect) {
@@ -188,21 +344,7 @@ fn position_tray_panel(window: &tauri::WebviewWindow, anchor: &Rect) {
         return;
     };
 
-    let Some((monitor, anchor_position, anchor_size)) = resolve_anchor_monitor(window, anchor)
-        .or_else(|| {
-            let monitor = window
-                .current_monitor()
-                .ok()
-                .flatten()
-                .or_else(|| window.primary_monitor().ok().flatten())?;
-            let scale_factor = monitor.scale_factor();
-            Some((
-                monitor,
-                rect_position_to_physical(anchor, scale_factor),
-                rect_size_to_physical(anchor, scale_factor),
-            ))
-        })
-    else {
+    let Some((monitor, anchor_position, anchor_size)) = resolve_anchor_monitor(window, anchor) else {
         return;
     };
 
@@ -287,8 +429,13 @@ fn position_tray_panel(window: &tauri::WebviewWindow, anchor: &Rect) {
         (x, y, gap)
     };
 
-    x = x.clamp(monitor_left + gap, monitor_right - window_width - gap);
-    y = y.clamp(monitor_top + gap, monitor_bottom - window_height - gap);
+    let x_min = monitor_left + gap;
+    let x_max = monitor_right - window_width - gap;
+    let y_min = monitor_top + gap;
+    let y_max = monitor_bottom - window_height - gap;
+
+    x = if x_min <= x_max { x.clamp(x_min, x_max) } else { x_min };
+    y = if y_min <= y_max { y.clamp(y_min, y_max) } else { y_min };
 
     let _ = window.set_position(Position::Physical(PhysicalPosition::new(x, y)));
 }
@@ -317,8 +464,12 @@ pub fn run() {
     tauri::Builder::default()
         .manage(SwitchLock::default())
         .manage(oauth::OAuthFlowManager::default())
-        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            if let Some(main_window) = app.get_webview_window("main") {
+                bind_main_window_events(&main_window);
+            }
+
             let tray_controller = Arc::new(Mutex::new(TrayPanelController::default()));
             let tray_window_builder =
                 WebviewWindowBuilder::new(app, "tray", WebviewUrl::App("index.html#tray".into()))
@@ -383,6 +534,13 @@ pub fn run() {
                     {
                         if should_suppress_tray_click(&click_state) {
                             return;
+                        }
+                        if let Some(main_window) = tray.app_handle().get_webview_window("main") {
+                            if is_window_minimized(&main_window) {
+                                hide_window(&tray.app_handle(), "tray");
+                                show_window(&tray.app_handle(), "main");
+                                return;
+                            }
                         }
                         toggle_tray_panel(&tray.app_handle(), &click_state, Some(&rect));
                     }
