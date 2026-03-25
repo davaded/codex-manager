@@ -99,6 +99,8 @@ sudo bash ./install-unix-cli.sh /Applications/codex-manager.app /usr/local/bin/c
 npm link
 ```
 
+这个本地命令现在只是一个薄包装，会转发到仓库里的 Rust CLI 实现；首次使用前需要本机可用 `cargo`。
+
 ## 快速开始
 
 1. 打开 Codex Manager
@@ -178,7 +180,7 @@ npm link
 - `accounts.json`：账号列表和 UI 状态
 - `settings.json`：主题、代理、自动刷新、切换后自动重启等设置
 - `credentials/<account-id>.json`：每个账号保存的凭证
-- `sessions/<account-id>/`：旧版兼容快照目录
+- `sessions/<account-id>/`：旧版兼容会话目录
 
 实时生效的 Codex 目录仍然是：
 

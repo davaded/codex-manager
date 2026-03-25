@@ -22,7 +22,8 @@ pub struct Account {
 pub struct SessionInfo {
     pub file_count: u32,
     pub total_bytes: u64,
-    pub last_snapshot_at: Option<String>,
+    #[serde(alias = "lastSnapshotAt")]
+    pub last_session_observed_at: Option<String>,
     pub current_session_id: Option<String>,
     pub current_thread_name: Option<String>,
     pub current_updated_at: Option<String>,

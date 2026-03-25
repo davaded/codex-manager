@@ -15,7 +15,7 @@ export const useAccountSwitch = () => {
       platformCapabilities?.supportsAutoRestartCodexDesktop === true;
 
     setSwitchState({
-      phase: "snapshotting",
+      phase: "preparing",
       fromAccountId: fromId,
       toAccountId: toId,
       error: null,
@@ -29,9 +29,9 @@ export const useAccountSwitch = () => {
     try {
       const toAuth = await api.readAccountCredentials(toId);
 
-      // Simulate visual phase transitions while backend runs atomically
-      t1 = setTimeout(() => setSwitchState({ phase: "restoring" }), 600);
-      t2 = setTimeout(() => setSwitchState({ phase: "writing_auth" }), 1400);
+      // Keep progress feedback aligned with the actual auth-switch flow.
+      t1 = setTimeout(() => setSwitchState({ phase: "writing_auth" }), 400);
+      t2 = setTimeout(() => setSwitchState({ phase: "syncing_state" }), 1000);
 
       const result = await api.switchAccount(fromId, toId, toAuth);
 
@@ -53,9 +53,9 @@ export const useAccountSwitch = () => {
       const sharedSessionInfo = {
         fileCount: currentSessionInfo?.fileCount ?? result.restore.fileCount,
         totalBytes: currentSessionInfo?.totalBytes ?? result.restore.totalBytes,
-        lastSnapshotAt:
+        lastSessionObservedAt:
           currentSessionInfo?.currentUpdatedAt ??
-          currentSessionInfo?.lastSnapshotAt ??
+          currentSessionInfo?.lastSessionObservedAt ??
           result.restore.restoreTime,
         currentSessionId: currentSessionInfo?.currentSessionId ?? null,
         currentThreadName: currentSessionInfo?.currentThreadName ?? null,
@@ -72,7 +72,7 @@ export const useAccountSwitch = () => {
             ? {
                 fileCount: result.snapshot.fileCount,
                 totalBytes: result.snapshot.totalBytes,
-                lastSnapshotAt: result.snapshot.snapshotTime,
+                lastSessionObservedAt: result.snapshot.snapshotTime,
                 currentSessionId:
                   activeAccount?.sessionInfo?.currentSessionId ??
                   currentSessionInfo?.currentSessionId ??

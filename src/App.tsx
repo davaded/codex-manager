@@ -433,7 +433,7 @@ const App: React.FC = () => {
       {confirmState?.kind === "delete" && (
         <ConfirmDialog
           title="删除账户"
-          message="确定要删除此账户吗？其保存的凭证和兼容快照会被移除，但不会清空当前共享会话。"
+          message="确定要删除此账户吗？其保存的凭证和兼容会话目录会被移除，但不会清空当前共享会话。"
           confirmLabel="确认删除"
           onConfirm={handleDelete}
           onCancel={() => setConfirmState(null)}

@@ -51,7 +51,7 @@ const Header: React.FC<HeaderProps> = ({
     ? `当前工作账户：${activeAccount.displayName}`
     : unmanagedCurrentAuthLabel
       ? `检测到未托管当前账号：${unmanagedCurrentAuthLabel}`
-      : "集中管理 OAuth 账户、会话快照与切换状态。";
+      : "集中管理 OAuth 账户、共享会话信息与切换状态。";
 
   const importButtonLabel = isImportingCurrentAuth
     ? "导入中..."

@@ -25,7 +25,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({ onAdd }) => (
       还没有接入账户
     </h3>
     <p className="mb-8 max-w-md text-sm leading-7 text-slate-500">
-      添加第一个 OAuth 账户后，这里会展示账户配额、会话快照和切换状态。
+      添加第一个 OAuth 账户后，这里会展示账户配额、共享会话信息和切换状态。
     </p>
     <button
       onClick={onAdd}

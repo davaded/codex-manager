@@ -10,7 +10,7 @@ use base64::Engine;
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
-use tauri_plugin_shell::ShellExt;
+use tauri_plugin_opener::OpenerExt;
 use tokio::sync::{oneshot, Mutex};
 
 use crate::commands::accounts;
@@ -246,7 +246,7 @@ pub async fn start_oauth_flow(app: AppHandle) -> Result<OAuthResult, String> {
     );
 
     // If browser fails to open, shut down the server immediately
-    if let Err(e) = app.shell().open(&auth_url, None) {
+    if let Err(e) = app.opener().open_url(&auth_url, None::<&str>) {
         shutdown_flow(&cleanup_state).await;
         let _ = server.await;
         clear_active_flow(&app, &cleanup_state).await;

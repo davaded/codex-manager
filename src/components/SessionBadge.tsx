@@ -39,10 +39,10 @@ const SessionBadge: React.FC<{ account: Account }> = ({ account }) => {
       <span>💬 {info.fileCount} sessions</span>
       <span className="opacity-30">·</span>
       <span>{formatBytes(info.totalBytes)}</span>
-      {info.lastSnapshotAt && (
+      {info.lastSessionObservedAt && (
         <>
           <span className="opacity-30">·</span>
-          <span>快照 {formatRelative(info.lastSnapshotAt)}</span>
+          <span>最近记录 {formatRelative(info.lastSessionObservedAt)}</span>
         </>
       )}
     </div>

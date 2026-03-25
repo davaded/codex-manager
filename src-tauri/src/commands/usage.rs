@@ -10,6 +10,7 @@ use tokio::fs;
 use uuid::Uuid;
 
 use crate::{
+    atomic_io::write_text_atomic_async,
     commands::{accounts, paths::app_data_dir},
     models::{
         AppSettings, AuthJson, CreditsSnapshot, GetAccountRateLimitsResponse, RateLimitSnapshot,
@@ -441,7 +442,7 @@ pub async fn read_account_rate_limits(
                 .ok_or_else(|| "刷新后仍无法识别 chatgpt_account_id".to_string())?;
             let serialized = serde_json::to_string_pretty(&auth)
                 .map_err(|e| format!("auth.json 序列化失败: {e}"))?;
-            fs::write(&credentials_path, serialized)
+            write_text_atomic_async(credentials_path.clone(), serialized)
                 .await
                 .map_err(|e| format!("更新账号凭证失败: {e}"))?;
             let payload =

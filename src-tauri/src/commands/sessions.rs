@@ -5,6 +5,7 @@ use tokio::fs;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
+use crate::atomic_io::write_text_atomic_async;
 use crate::commands::paths::{app_data_dir, home_codex_dir};
 use crate::models::{RestoreResult, SessionInfo, SnapshotMeta, SnapshotResult, SwitchResult};
 
@@ -244,12 +245,7 @@ async fn restore_sessions_inner(
 
 async fn write_auth_json_inner(content: &str) -> Result<(), String> {
     let path = home_codex_dir()?.join("auth.json");
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    fs::write(path, content).await.map_err(|e| e.to_string())
+    write_text_atomic_async(path, content.to_string()).await
 }
 
 // ─── Tauri commands ───────────────────────────────────────────────────────────
@@ -343,7 +339,7 @@ pub async fn list_account_session_info(
     Ok(Some(SessionInfo {
         file_count: meta.file_count,
         total_bytes: meta.total_bytes,
-        last_snapshot_at: Some(meta.snapshot_at),
+        last_session_observed_at: Some(meta.snapshot_at),
         current_session_id: None,
         current_thread_name: None,
         current_updated_at: None,
@@ -362,7 +358,7 @@ pub async fn get_current_sessions_info() -> Result<SessionInfo, String> {
     Ok(SessionInfo {
         file_count,
         total_bytes,
-        last_snapshot_at: None,
+        last_session_observed_at: None,
         current_session_id: latest_session.as_ref().map(|entry| entry.id.clone()),
         current_thread_name: latest_session
             .as_ref()

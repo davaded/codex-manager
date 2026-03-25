@@ -2,6 +2,11 @@ import { Account, AppSettings, BackupBundle, BackupBundleAccount } from "../type
 import { api } from "./invoke";
 import { hydrateAccounts } from "./accounts";
 
+interface NormalizedBackupImport {
+  accounts: Account[];
+  settings: AppSettings;
+}
+
 function assertBackupBundle(value: unknown): asserts value is BackupBundle {
   if (!value || typeof value !== "object") {
     throw new Error("备份文件格式无效");
@@ -14,6 +19,46 @@ function assertBackupBundle(value: unknown): asserts value is BackupBundle {
   if (!bundle.settings || typeof bundle.settings !== "object") {
     throw new Error("备份文件缺少设置数据");
   }
+}
+
+function normalizeBackupSettings(settings: Partial<AppSettings>): AppSettings {
+  return {
+    autoRefreshInterval:
+      typeof settings.autoRefreshInterval === "number"
+        ? settings.autoRefreshInterval
+        : 0,
+    autoRestartCodexAfterSwitch:
+      typeof settings.autoRestartCodexAfterSwitch === "boolean"
+        ? settings.autoRestartCodexAfterSwitch
+        : true,
+    theme:
+      settings.theme === "light" ||
+      settings.theme === "dark" ||
+      settings.theme === "system"
+        ? settings.theme
+        : "system",
+    proxyUrl: typeof settings.proxyUrl === "string" ? settings.proxyUrl : "",
+  };
+}
+
+function normalizeBackupImport(parsed: BackupBundle): NormalizedBackupImport {
+  const accounts = parsed.accounts
+    .map((entry) => entry.account)
+    .filter((account): account is Account => Boolean(account?.id && account.displayName));
+
+  if (accounts.length !== parsed.accounts.length) {
+    throw new Error("备份文件包含无效账户条目");
+  }
+
+  const uniqueIds = new Set(accounts.map((account) => account.id));
+  if (uniqueIds.size !== accounts.length) {
+    throw new Error("备份文件包含重复账户 ID");
+  }
+
+  return {
+    accounts,
+    settings: normalizeBackupSettings(parsed.settings),
+  };
 }
 
 function downloadJson(content: string, fileName: string) {
@@ -58,53 +103,77 @@ export async function importBackupBundle(
   const content = await file.text();
   const parsed = JSON.parse(content) as BackupBundle;
   assertBackupBundle(parsed);
-
-  const nextAccounts = parsed.accounts
-    .map((entry) => entry.account)
-    .filter((account): account is Account => Boolean(account?.id && account.displayName));
-
-  await Promise.all(
-    existingAccounts
-      .filter((account) => !nextAccounts.some((item) => item.id === account.id))
-      .map(async (account) => {
-        await api.deleteAccountCredentials(account.id).catch(() => undefined);
-        await api.deleteAccountSessions(account.id).catch(() => undefined);
-      }),
+  const normalized = normalizeBackupImport(parsed);
+  const nextAccounts = normalized.accounts;
+  const removedAccounts = existingAccounts.filter(
+    (account) => !nextAccounts.some((item) => item.id === account.id),
   );
+  const previousCredentials = new Map<string, string | null>();
+  const accountIdsToWrite = new Set(
+    parsed.accounts
+      .filter(
+        (entry): entry is BackupBundleAccount & { account: Account } =>
+          Boolean(entry.account?.id),
+      )
+      .map((entry) => entry.account.id),
+  );
+  const shouldReplaceCurrentAuth =
+    Boolean(parsed.currentAuthJson) && nextAccounts.some((account) => account.isActive);
+  const previousAuthJson = shouldReplaceCurrentAuth
+    ? await api.readAuthJson().catch(() => null)
+    : null;
+  let accountsSaved = false;
 
-  await Promise.all(
-    parsed.accounts.map(async ({ account, credentials }) => {
-      if (credentials) {
-        await api.saveAccountCredentials(account.id, credentials);
+  try {
+    for (const accountId of accountIdsToWrite) {
+      const existingCredentials = await api.readAccountCredentials(accountId).catch(() => null);
+      previousCredentials.set(accountId, existingCredentials);
+    }
+
+    for (const { account, credentials } of parsed.accounts) {
+      if (!credentials) {
+        continue;
       }
-    }),
-  );
+      await api.saveAccountCredentials(account.id, credentials);
+    }
 
-  if (parsed.currentAuthJson && nextAccounts.some((account) => account.isActive)) {
-    await api.writeAuthJson(parsed.currentAuthJson);
+    if (shouldReplaceCurrentAuth) {
+      await api.writeAuthJson(parsed.currentAuthJson as string);
+    }
+
+    const hydratedAccounts = await hydrateAccounts(nextAccounts);
+    await api.saveAccounts({ version: "1.0", accounts: hydratedAccounts });
+    accountsSaved = true;
+
+    for (const account of removedAccounts) {
+      await api.deleteAccountCredentials(account.id).catch(() => undefined);
+      await api.deleteAccountSessions(account.id).catch(() => undefined);
+    }
+
+    return {
+      accounts: hydratedAccounts,
+      settings: normalized.settings,
+    };
+  } catch (error) {
+    if (!accountsSaved) {
+      for (const accountId of accountIdsToWrite) {
+        const previous = previousCredentials.get(accountId) ?? null;
+        if (previous === null) {
+          await api.deleteAccountCredentials(accountId).catch(() => undefined);
+        } else {
+          await api.saveAccountCredentials(accountId, previous).catch(() => undefined);
+        }
+      }
+
+      if (shouldReplaceCurrentAuth) {
+        if (previousAuthJson === null) {
+          // If no prior live auth was available, leave the current file untouched on rollback.
+        } else {
+          await api.writeAuthJson(previousAuthJson).catch(() => undefined);
+        }
+      }
+    }
+
+    throw error;
   }
-
-  const hydratedAccounts = await hydrateAccounts(nextAccounts);
-  await api.saveAccounts({ version: "1.0", accounts: hydratedAccounts });
-
-  return {
-    accounts: hydratedAccounts,
-    settings: {
-      autoRefreshInterval:
-        typeof parsed.settings.autoRefreshInterval === "number"
-          ? parsed.settings.autoRefreshInterval
-          : 0,
-      autoRestartCodexAfterSwitch:
-        typeof parsed.settings.autoRestartCodexAfterSwitch === "boolean"
-          ? parsed.settings.autoRestartCodexAfterSwitch
-          : true,
-      theme:
-        parsed.settings.theme === "light" ||
-        parsed.settings.theme === "dark" ||
-        parsed.settings.theme === "system"
-          ? parsed.settings.theme
-          : "system",
-      proxyUrl: typeof parsed.settings.proxyUrl === "string" ? parsed.settings.proxyUrl : "",
-    },
-  };
 }

@@ -35,7 +35,7 @@ const demoAccounts: AccountsStore = {
       sessionInfo: {
         fileCount: 42,
         totalBytes: 5_320_000,
-        lastSnapshotAt: "2026-03-18T07:30:00.000Z",
+        lastSessionObservedAt: "2026-03-18T07:30:00.000Z",
         currentSessionId: "019cfff1-1ca0-7c21-b5f4-7f5a0fc8725a",
         currentThreadName: "复刻界面设计并完善功能",
         currentUpdatedAt: "2026-03-18T07:55:43.7207813Z",
@@ -58,7 +58,7 @@ const demoAccounts: AccountsStore = {
       sessionInfo: {
         fileCount: 8,
         totalBytes: 1_180_000,
-        lastSnapshotAt: "2026-03-18T06:30:00.000Z",
+        lastSessionObservedAt: "2026-03-18T06:30:00.000Z",
         currentSessionId: null,
         currentThreadName: null,
         currentUpdatedAt: null,
@@ -81,7 +81,7 @@ const demoAccounts: AccountsStore = {
       sessionInfo: {
         fileCount: 36,
         totalBytes: 4_740_000,
-        lastSnapshotAt: "2026-03-10T01:15:00.000Z",
+        lastSessionObservedAt: "2026-03-10T01:15:00.000Z",
         currentSessionId: null,
         currentThreadName: null,
         currentUpdatedAt: null,
@@ -164,7 +164,22 @@ function ensureMockSeed() {
 
 function readMockAccounts(): AccountsStore {
   ensureMockSeed();
-  return readJson(MOCK_ACCOUNTS_KEY, demoAccounts);
+  const store = readJson(MOCK_ACCOUNTS_KEY, demoAccounts);
+  return {
+    ...store,
+    accounts: store.accounts.map((account) => ({
+      ...account,
+      sessionInfo: account.sessionInfo
+        ? {
+            ...account.sessionInfo,
+            lastSessionObservedAt:
+              account.sessionInfo.lastSessionObservedAt ??
+              (account.sessionInfo as { lastSnapshotAt?: string | null }).lastSnapshotAt ??
+              null,
+          }
+        : null,
+    })),
+  };
 }
 
 function writeMockAccounts(data: AccountsStore) {
@@ -279,7 +294,7 @@ const browserApi = {
       fromAccount?.sessionInfo ?? {
         fileCount: 0,
         totalBytes: 0,
-        lastSnapshotAt: null,
+        lastSessionObservedAt: null,
         currentSessionId: null,
         currentThreadName: null,
         currentUpdatedAt: null,
@@ -297,7 +312,7 @@ const browserApi = {
           ? {
               fileCount: restore.fileCount,
               totalBytes: restore.totalBytes,
-              lastSnapshotAt: restore.restoreTime,
+              lastSessionObservedAt: restore.restoreTime,
               currentSessionId: liveSessionInfo.currentSessionId ?? null,
               currentThreadName: liveSessionInfo.currentThreadName ?? null,
               currentUpdatedAt: liveSessionInfo.currentUpdatedAt ?? null,
@@ -306,7 +321,7 @@ const browserApi = {
           ? {
               fileCount: snapshot.fileCount,
               totalBytes: snapshot.totalBytes,
-              lastSnapshotAt: snapshot.snapshotTime,
+              lastSessionObservedAt: snapshot.snapshotTime,
               currentSessionId: liveSessionInfo.currentSessionId ?? null,
               currentThreadName: liveSessionInfo.currentThreadName ?? null,
               currentUpdatedAt: liveSessionInfo.currentUpdatedAt ?? null,
@@ -338,7 +353,7 @@ const browserApi = {
       store.accounts.find((item) => item.isActive)?.sessionInfo ?? {
         fileCount: 0,
         totalBytes: 0,
-        lastSnapshotAt: null,
+        lastSessionObservedAt: null,
         currentSessionId: null,
         currentThreadName: null,
         currentUpdatedAt: null,

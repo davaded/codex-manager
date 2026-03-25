@@ -8,6 +8,7 @@ use std::{
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 
+use crate::atomic_io::write_text_atomic;
 use crate::models::{Account, AccountsStore};
 
 const APP_IDENTIFIER: &str = "com.codex-manager.app";
@@ -144,14 +145,8 @@ fn load_accounts_store() -> Result<AccountsStore> {
 
 fn write_accounts_store(store: &AccountsStore) -> Result<()> {
     let path = accounts_path()?;
-    let parent = path
-        .parent()
-        .context("accounts.json path does not have a parent directory")?;
-    fs::create_dir_all(parent)
-        .with_context(|| format!("Failed to create {}", parent.display()))?;
-
     let content = serde_json::to_string_pretty(store).context("Failed to serialize accounts.json")?;
-    fs::write(&path, format!("{content}\n"))
+    write_text_atomic(&path, &format!("{content}\n"))
         .with_context(|| format!("Failed to write {}", path.display()))
 }
 
@@ -323,7 +318,7 @@ fn switch_account(query: &str) -> Result<()> {
         .context("auth.json path does not have a parent directory")?;
     fs::create_dir_all(auth_parent)
         .with_context(|| format!("Failed to create {}", auth_parent.display()))?;
-    fs::write(&auth_path, auth_content)
+    write_text_atomic(&auth_path, &auth_content)
         .with_context(|| format!("Failed to write {}", auth_path.display()))?;
 
     let now = Utc::now().to_rfc3339();

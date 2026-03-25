@@ -93,11 +93,13 @@ For `.dmg` and `.AppImage` installs, the release helper script can expose the co
 sudo bash ./install-unix-cli.sh /Applications/codex-manager.app /usr/local/bin/codex-manager
 ```
 
-If you are running from the repo locally, you can still expose the Node-based dev CLI with:
+If you are running from the repo locally, you can still expose the dev CLI wrapper with:
 
 ```bash
 npm link
 ```
+
+That local command is now only a thin wrapper and forwards to the Rust CLI implementation in this repo, so `cargo` must be available on the machine.
 
 ## Quick Start
 
@@ -178,7 +180,7 @@ App data is stored in the system app-data directory. Main files include:
 - `accounts.json`: account list and UI state
 - `settings.json`: theme, proxy, auto-refresh, and restart-after-switch settings
 - `credentials/<account-id>.json`: saved credentials per account
-- `sessions/<account-id>/`: legacy compatibility snapshot directory
+- `sessions/<account-id>/`: legacy compatibility session directory
 
 The live Codex directory remains:
 

@@ -5,6 +5,7 @@ use tauri::AppHandle;
 use tokio::fs;
 use uuid::Uuid;
 
+use crate::atomic_io::write_text_atomic_async;
 use crate::commands::paths::{app_data_dir, home_codex_dir};
 use crate::models::{AccountsStore, AppSettings};
 
@@ -13,10 +14,6 @@ fn validate_uuid(account_id: &str) -> Result<String, String> {
     Uuid::parse_str(account_id)
         .map(|u| u.to_string())
         .map_err(|_| format!("Invalid account_id: must be a UUID (got {:?})", account_id))
-}
-
-async fn ensure_dir(path: &PathBuf) -> Result<(), String> {
-    fs::create_dir_all(path).await.map_err(|e| e.to_string())
 }
 
 fn accounts_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -85,17 +82,14 @@ async fn read_auth_file_normalized(path: &PathBuf) -> Result<String, String> {
     let content = fs::read_to_string(path).await.map_err(|e| e.to_string())?;
     let (normalized, changed) = normalize_auth_json_content(&content)?;
     if changed {
-        fs::write(path, &normalized)
-            .await
-            .map_err(|e| e.to_string())?;
+        write_text_atomic_async(path.clone(), normalized.clone()).await?;
     }
     Ok(normalized)
 }
 
 async fn write_auth_file_normalized(path: &PathBuf, content: String) -> Result<(), String> {
     let (normalized, _) = normalize_auth_json_content(&content)?;
-    ensure_dir(&path.parent().unwrap().to_path_buf()).await?;
-    fs::write(path, normalized).await.map_err(|e| e.to_string())
+    write_text_atomic_async(path.clone(), normalized).await
 }
 
 fn default_settings() -> AppSettings {
@@ -123,9 +117,8 @@ pub async fn load_accounts(app: AppHandle) -> Result<AccountsStore, String> {
 #[tauri::command]
 pub async fn save_accounts(app: AppHandle, data: AccountsStore) -> Result<(), String> {
     let path = accounts_path(&app)?;
-    ensure_dir(&path.parent().unwrap().to_path_buf()).await?;
     let content = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
-    fs::write(&path, content).await.map_err(|e| e.to_string())
+    write_text_atomic_async(path, content).await
 }
 
 #[tauri::command]
@@ -142,9 +135,8 @@ pub async fn load_settings(app: AppHandle) -> Result<AppSettings, String> {
 #[tauri::command]
 pub async fn save_settings(app: AppHandle, data: AppSettings) -> Result<(), String> {
     let path = settings_path(&app)?;
-    ensure_dir(&path.parent().unwrap().to_path_buf()).await?;
     let content = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
-    fs::write(&path, content).await.map_err(|e| e.to_string())
+    write_text_atomic_async(path, content).await
 }
 
 #[tauri::command]
@@ -191,4 +183,34 @@ pub async fn delete_account_credentials(app: AppHandle, account_id: String) -> R
         fs::remove_file(&path).await.map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_auth_json_content;
+    use serde_json::Value;
+
+    #[test]
+    fn normalizes_numeric_last_refresh_to_rfc3339() {
+        let (normalized, changed) =
+            normalize_auth_json_content(r#"{"last_refresh":1700000000000,"tokens":{}}"#)
+                .expect("normalize");
+
+        assert!(changed);
+        let parsed: Value = serde_json::from_str(&normalized).expect("json");
+        let last_refresh = parsed
+            .get("last_refresh")
+            .and_then(Value::as_str)
+            .expect("last_refresh string");
+        assert!(last_refresh.contains('T'));
+    }
+
+    #[test]
+    fn leaves_rfc3339_last_refresh_untouched() {
+        let raw = r#"{"last_refresh":"2026-03-25T08:00:00+00:00","tokens":{}}"#;
+        let (normalized, changed) = normalize_auth_json_content(raw).expect("normalize");
+
+        assert!(!changed);
+        assert_eq!(normalized, raw);
+    }
 }

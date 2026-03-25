@@ -3,9 +3,9 @@ import { useAccountStore } from "../store/accountStore";
 import { SwitchPhase } from "../types";
 
 const PHASES: { key: SwitchPhase; label: string; order: number }[] = [
-  { key: "snapshotting", label: "确认当前共享会话状态", order: 1 },
-  { key: "restoring", label: "切换目标账号身份", order: 2 },
-  { key: "writing_auth", label: "保持当前会话继续可用", order: 3 },
+  { key: "preparing", label: "准备切换目标账号", order: 1 },
+  { key: "writing_auth", label: "写入目标账号凭证", order: 2 },
+  { key: "syncing_state", label: "同步本地状态与会话信息", order: 3 },
 ];
 
 function getIcon(

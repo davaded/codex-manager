@@ -137,7 +137,7 @@ export function getAccountInsight(account: Account): AccountInsight {
   const weeklyQuota = deriveWeeklyQuota(account);
   const syncSource = account.isActive
     ? account.lastSwitchedAt ?? account.createdAt
-    : account.sessionInfo?.lastSnapshotAt ?? account.lastSwitchedAt ?? account.createdAt;
+    : account.sessionInfo?.lastSessionObservedAt ?? account.lastSwitchedAt ?? account.createdAt;
 
   return {
     ...role,

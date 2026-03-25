@@ -4,6 +4,6 @@
   "windows": ["main", "tray"],
   "permissions": [
     "core:default",
-    "shell:allow-open"
+    "opener:default"
   ]
 }

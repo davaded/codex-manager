@@ -14,7 +14,7 @@ export interface Account {
 export interface SessionInfo {
   fileCount: number;
   totalBytes: number;
-  lastSnapshotAt: string | null;
+  lastSessionObservedAt: string | null;
   currentSessionId?: string | null;
   currentThreadName?: string | null;
   currentUpdatedAt?: string | null;
@@ -32,9 +32,9 @@ export interface AccountsStore {
 
 export type SwitchPhase =
   | 'idle'
-  | 'snapshotting'
-  | 'restoring'
+  | 'preparing'
   | 'writing_auth'
+  | 'syncing_state'
   | 'done'
   | 'error';
 

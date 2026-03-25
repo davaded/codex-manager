@@ -1,3 +1,4 @@
+pub mod atomic_io;
 pub mod cli;
 pub mod commands;
 pub mod models;
@@ -318,7 +319,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(SwitchLock::default())
         .manage(oauth::OAuthFlowManager::default())
-        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let tray_controller = Arc::new(Mutex::new(TrayPanelController::default()));
             let tray_window_builder =
