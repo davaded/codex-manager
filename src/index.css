@@ -1,25 +1,44 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap");
 @import "tailwindcss";
 
 @layer base {
   :root {
     font-family:
-      "SF Pro Display",
-      "SF Pro Text",
+      "Avenir Next",
+      "Trebuchet MS",
       "PingFang SC",
       "HarmonyOS Sans SC",
-      "MiSans",
       "Microsoft YaHei UI",
       sans-serif;
-    --dashboard-ink: #08111f;
-    --dashboard-panel: rgba(255, 255, 255, 0.72);
-    --dashboard-line: rgba(148, 163, 184, 0.18);
-    --shell-bg: #f2f2f0;
-    --shell-paper: rgba(255, 255, 255, 0.78);
-    --shell-paper-strong: rgba(255, 255, 255, 0.9);
-    --shell-stroke: rgba(255, 255, 255, 0.76);
-    --shell-line: rgba(120, 130, 148, 0.14);
-    --shell-shadow: 0 42px 110px -68px rgba(28, 32, 38, 0.2);
-    --shell-shadow-strong: 0 54px 130px -76px rgba(28, 32, 38, 0.28);
+    --dashboard-ink: #17120b;
+    --dashboard-panel: rgba(255, 253, 248, 0.86);
+    --dashboard-line: rgba(218, 212, 200, 0.92);
+    --shell-bg: #faf9f7;
+    --shell-paper: rgba(255, 253, 248, 0.9);
+    --shell-paper-strong: rgba(255, 255, 255, 0.96);
+    --shell-stroke: rgba(218, 212, 200, 0.94);
+    --shell-line: rgba(218, 212, 200, 0.84);
+    --clay-oat: #dad4c8;
+    --clay-oat-light: #eee9df;
+    --clay-cream: #faf9f7;
+    --clay-matcha: #84e7a5;
+    --clay-matcha-deep: #02492a;
+    --clay-slushie: #3bd3fd;
+    --clay-lemon: #f8cc65;
+    --clay-ube: #c1b0ff;
+    --clay-pomegranate: #fc7981;
+    --clay-blueberry: #01418d;
+    --clay-shadow:
+      rgba(0, 0, 0, 0.1) 0px 1px 1px,
+      rgba(0, 0, 0, 0.04) 0px -1px 1px inset,
+      rgba(0, 0, 0, 0.05) 0px -0.5px 1px,
+      rgba(80, 62, 30, 0.12) 0px 22px 42px -28px;
+    --clay-shadow-strong:
+      rgba(0, 0, 0, 0.12) 0px 1px 1px,
+      rgba(0, 0, 0, 0.04) 0px -1px 1px inset,
+      rgba(0, 0, 0, 0.05) 0px -0.5px 1px,
+      rgba(80, 62, 30, 0.18) 0px 28px 48px -24px;
+    --clay-hard-shadow: rgb(0, 0, 0) -7px 7px;
   }
 
   html {
@@ -31,10 +50,11 @@
     margin: 0;
     background-color: var(--shell-bg);
     background-image:
-      radial-gradient(circle at 8% 10%, rgba(255, 255, 255, 0.98), transparent 24%),
-      radial-gradient(circle at 84% 12%, rgba(224, 226, 229, 0.56), transparent 28%),
-      radial-gradient(circle at 68% 26%, rgba(204, 215, 226, 0.12), transparent 18%),
-      linear-gradient(180deg, #f9f8f6 0%, #f2f2f0 40%, #eceeec 100%);
+      radial-gradient(circle at 12% 14%, rgba(248, 204, 101, 0.26), transparent 24%),
+      radial-gradient(circle at 86% 12%, rgba(59, 211, 253, 0.18), transparent 28%),
+      radial-gradient(circle at 74% 30%, rgba(193, 176, 255, 0.16), transparent 20%),
+      radial-gradient(circle at 28% 80%, rgba(252, 121, 129, 0.14), transparent 22%),
+      linear-gradient(180deg, #fffdf9 0%, #faf9f7 42%, #f4efe7 100%);
   }
 
   body.tray-mode,
@@ -67,85 +87,76 @@
 @layer utilities {
   .shell-grid {
     background-image:
-      linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-    background-size: 34px 34px;
+      linear-gradient(to right, rgba(218, 212, 200, 0.36) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(218, 212, 200, 0.36) 1px, transparent 1px);
+    background-size: 42px 42px;
   }
 
   .apple-panel {
     background:
-      linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.68)),
-      rgba(255,255,255,0.72);
-    backdrop-filter: blur(28px) saturate(1.05);
-    -webkit-backdrop-filter: blur(28px) saturate(1.05);
-    border: 1px solid var(--shell-stroke);
-    box-shadow:
-      var(--shell-shadow),
-      inset 0 1px 0 rgba(255,255,255,0.84);
+      linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,251,244,0.88)),
+      rgba(255,253,248,0.92);
+    border: 1px solid var(--clay-oat);
+    box-shadow: var(--clay-shadow);
   }
 
   .apple-panel-strong {
     background:
-      linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.72)),
+      linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,250,242,0.92)),
       var(--shell-paper-strong);
-    backdrop-filter: blur(32px) saturate(1.08);
-    -webkit-backdrop-filter: blur(32px) saturate(1.08);
-    border: 1px solid rgba(255,255,255,0.86);
-    box-shadow:
-      var(--shell-shadow-strong),
-      inset 0 1px 0 rgba(255,255,255,0.92);
+    border: 1px solid var(--clay-oat);
+    box-shadow: var(--clay-shadow-strong);
   }
 
   .apple-panel-muted {
     background:
-      linear-gradient(180deg, rgba(255,255,255,0.7), rgba(248,250,252,0.62)),
+      linear-gradient(180deg, rgba(255,254,250,0.94), rgba(253,247,239,0.9)),
       var(--shell-paper);
-    border: 1px solid rgba(255,255,255,0.74);
-    box-shadow:
-      0 24px 70px -58px rgba(15, 23, 42, 0.34),
-      inset 0 1px 0 rgba(255,255,255,0.86);
+    border: 1px solid var(--clay-oat);
+    box-shadow: var(--clay-shadow);
   }
 
   .apple-divider {
     border-color: var(--shell-line);
+    border-style: dashed;
   }
 
   .glass-pill {
-    background: rgba(255,255,255,0.68);
-    border: 1px solid rgba(255,255,255,0.84);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.88),
-      0 18px 36px -30px rgba(15, 23, 42, 0.24);
-    backdrop-filter: blur(18px) saturate(1.15);
-    -webkit-backdrop-filter: blur(18px) saturate(1.15);
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px dashed var(--clay-oat);
+    box-shadow: var(--clay-shadow);
+    transition:
+      transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 180ms ease,
+      color 180ms ease;
+  }
+
+  .glass-pill:hover:not(:disabled) {
+    transform: rotateZ(-4deg) translateY(-2px);
+    box-shadow: var(--clay-hard-shadow);
   }
 
   .toolbar-shell {
     background:
-      linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.7)),
-      rgba(255,255,255,0.76);
-    border: 1px solid rgba(255,255,255,0.82);
-    box-shadow:
-      0 30px 90px -64px rgba(15, 23, 42, 0.32),
-      inset 0 1px 0 rgba(255,255,255,0.92);
-    backdrop-filter: blur(28px) saturate(1.06);
-    -webkit-backdrop-filter: blur(28px) saturate(1.06);
+      linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,250,243,0.92)),
+      rgba(255,255,255,0.94);
+    border: 1px solid var(--clay-oat);
+    box-shadow: var(--clay-shadow-strong);
   }
 
   .toolbar-pill {
-    background: rgba(241, 245, 249, 0.72);
-    border: 1px solid rgba(255,255,255,0.84);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px dashed var(--clay-oat);
+    box-shadow: var(--clay-shadow);
   }
 
   .status-chip {
     background:
-      linear-gradient(180deg, rgba(255,255,255,0.82), rgba(248,250,252,0.72)),
-      rgba(255,255,255,0.74);
-    border: 1px solid rgba(255,255,255,0.82);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.88),
-      0 22px 36px -32px rgba(15, 23, 42, 0.18);
+      linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,248,238,0.92)),
+      rgba(255,255,255,0.92);
+    border: 1px dashed var(--clay-oat);
+    box-shadow: var(--clay-shadow);
   }
 
   .inspector-panel {
@@ -160,19 +171,19 @@
 
   .metric-tile {
     background:
-      linear-gradient(180deg, rgba(255,255,255,0.9), rgba(248,250,252,0.76)),
-      rgba(255,255,255,0.82);
-    border: 1px solid rgba(255,255,255,0.82);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.92),
-      0 20px 40px -32px rgba(15, 23, 42, 0.16);
+      linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,249,241,0.92)),
+      rgba(255,255,255,0.94);
+    border: 1px solid var(--clay-oat);
+    box-shadow: var(--clay-shadow);
   }
 
   .primary-action {
-    background: linear-gradient(145deg, #141920 0%, #212933 58%, #374352 100%);
+    background: linear-gradient(135deg, #02492a 0%, #078a52 46%, #01418d 100%);
+    border: 1px solid rgba(255, 255, 255, 0.22);
     box-shadow:
-      0 22px 40px -24px rgba(22,26,31,0.52),
-      inset 0 1px 0 rgba(255,255,255,0.12);
+      rgba(0, 0, 0, 0.12) 0px 1px 1px,
+      rgba(255, 255, 255, 0.08) 0px -1px 1px inset,
+      rgba(0, 0, 0, 0.05) 0px -0.5px 1px;
     transition:
       transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
       box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -180,10 +191,8 @@
   }
 
   .primary-action:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow:
-      0 30px 46px -28px rgba(22,26,31,0.58),
-      inset 0 1px 0 rgba(255,255,255,0.12);
+    transform: rotateZ(-4deg) translateY(-2px);
+    box-shadow: var(--clay-hard-shadow);
   }
 
   .menu-popover > summary::-webkit-details-marker {
@@ -196,24 +205,20 @@
 
   .modal-backdrop {
     background:
-      radial-gradient(circle at top, rgba(255,255,255,0.18), transparent 34%),
-      linear-gradient(180deg, rgba(2,6,23,0.62), rgba(15,23,42,0.72));
-    backdrop-filter: blur(22px) saturate(1.05);
-    -webkit-backdrop-filter: blur(22px) saturate(1.05);
+      radial-gradient(circle at top, rgba(248,204,101,0.18), transparent 28%),
+      linear-gradient(180deg, rgba(23,18,11,0.42), rgba(23,18,11,0.56));
+    backdrop-filter: blur(18px) saturate(1.02);
+    -webkit-backdrop-filter: blur(18px) saturate(1.02);
   }
 
   .dialog-shell {
     position: relative;
     overflow: hidden;
     background:
-      linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.78)),
-      rgba(255,255,255,0.84);
-    border: 1px solid rgba(255,255,255,0.84);
-    box-shadow:
-      0 44px 120px -68px rgba(15, 23, 42, 0.48),
-      inset 0 1px 0 rgba(255,255,255,0.94);
-    backdrop-filter: blur(28px) saturate(1.12);
-    -webkit-backdrop-filter: blur(28px) saturate(1.12);
+      linear-gradient(180deg, rgba(255,255,255,0.99), rgba(255,249,242,0.96)),
+      rgba(255,255,255,0.98);
+    border: 1px solid var(--clay-oat);
+    box-shadow: var(--clay-shadow-strong);
   }
 
   .dialog-shell::before {
@@ -222,9 +227,19 @@
     inset: 0;
     pointer-events: none;
     background:
-      radial-gradient(circle at top left, rgba(212,216,221,0.18), transparent 28%),
-      radial-gradient(circle at top right, rgba(232,227,218,0.18), transparent 26%);
+      radial-gradient(circle at top left, rgba(132,231,165,0.18), transparent 28%),
+      radial-gradient(circle at top right, rgba(248,204,101,0.2), transparent 24%),
+      radial-gradient(circle at bottom right, rgba(193,176,255,0.18), transparent 28%);
     opacity: 0.96;
+  }
+
+  .dialog-shell::after {
+    content: "";
+    position: absolute;
+    inset: 14px;
+    border: 1px dashed rgba(218, 212, 200, 0.84);
+    border-radius: 28px;
+    pointer-events: none;
   }
 
   .dark-glass-panel {
@@ -240,9 +255,7 @@
   }
 
   .liquid-toggle {
-    box-shadow:
-      inset 0 1px 1px rgba(255,255,255,0.28),
-      0 14px 28px -24px rgba(15,23,42,0.45);
+    box-shadow: var(--clay-shadow);
   }
 
   .toast-shell {
@@ -284,19 +297,37 @@
 
   .section-kicker {
     @apply text-[11px] font-semibold uppercase tracking-[0.34em];
-    color: rgba(71, 85, 105, 0.74);
+    color: rgba(85, 83, 78, 0.8);
+    font-family: "Space Mono", monospace;
   }
 
   .eyebrow-chip {
     @apply inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em];
-    background: rgba(255,255,255,0.62);
-    border: 1px solid rgba(255,255,255,0.82);
-    color: rgba(51, 65, 85, 0.72);
-    backdrop-filter: blur(14px);
+    background: rgba(255,255,255,0.92);
+    border: 1px dashed var(--clay-oat);
+    color: rgba(85, 83, 78, 0.84);
+    box-shadow: var(--clay-shadow);
+    font-family: "Space Mono", monospace;
   }
 
   .soft-mask {
     mask-image: linear-gradient(180deg, #000 0%, rgba(0,0,0,0.88) 72%, transparent 100%);
+  }
+
+  .clay-field {
+    border: 1px solid var(--clay-oat);
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow:
+      rgba(0, 0, 0, 0.06) 0px 1px 1px,
+      rgba(0, 0, 0, 0.03) 0px -1px 1px inset;
+  }
+
+  .clay-field:focus {
+    border-color: var(--clay-blueberry);
+    box-shadow:
+      rgba(0, 0, 0, 0.06) 0px 1px 1px,
+      rgba(0, 0, 0, 0.03) 0px -1px 1px inset,
+      rgba(1, 65, 141, 0.18) 0px 0px 0px 4px;
   }
 }
 

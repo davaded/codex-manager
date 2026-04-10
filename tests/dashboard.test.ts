@@ -44,9 +44,13 @@ describe("getAccountInsight", () => {
     const insight = getAccountInsight(account);
 
     expect(insight.roleLabel).toBe("Pro");
-    expect(insight.hourlyQuota.valueLabel).toBe("92% / 5h");
+    expect(insight.hourlyQuota.valueLabel).toBe("8% 剩余");
+    expect(insight.hourlyQuota.centerLabel).toBe("剩余");
+    expect(insight.hourlyQuota.detail).toContain("已用 92%");
     expect(insight.hourlyQuota.tone).toBe("critical");
-    expect(insight.weeklyQuota.valueLabel).toBe("44% / week");
+    expect(insight.weeklyQuota.valueLabel).toBe("56% 剩余");
+    expect(insight.weeklyQuota.centerLabel).toBe("剩余");
+    expect(insight.weeklyQuota.detail).toContain("已用 44%");
     expect(insight.weeklyQuota.tone).toBe("healthy");
     expect(insight.syncLabel).toBe("2026-03-11 10:00");
     expect(insight.hasRealRateLimits).toBe(true);
@@ -69,7 +73,32 @@ describe("getAccountInsight", () => {
 });
 
 describe("quota ranking", () => {
-  it("recommends the best non-active account and returns the best overall account", () => {
+  it("recommends the best overall account even when it is already active", () => {
+    const active = createAccount({
+      id: "active",
+      isActive: true,
+      rateLimits: {
+        planType: "plus",
+        primary: { usedPercent: 15 },
+        secondary: { usedPercent: 20 },
+      },
+    });
+    const candidate = createAccount({
+      id: "candidate",
+      displayName: "Backup",
+      isActive: false,
+      rateLimits: {
+        planType: "plus",
+        primary: { usedPercent: 40 },
+        secondary: { usedPercent: 35 },
+      },
+    });
+
+    expect(getRecommendedAccountId([active, candidate])).toBe("active");
+    expect(getBestQuotaAccount([active, candidate])?.id).toBe("active");
+  });
+
+  it("recommends a standby account when it is better than the current one", () => {
     const active = createAccount({
       id: "active",
       isActive: true,

@@ -42,7 +42,7 @@ Codex Manager 把这些操作收敛成桌面窗口、托盘面板和命令行里
 - 支持按额度情况执行 Smart Switch
 - 提供账户工作台与统计视图两种页面
 - 提供托盘快捷面板
-- 支持切换后按设置重启 Codex Desktop
+- 默认执行无感热切换，仅按设置在兼容模式下重启 Codex Desktop
 - 支持备份导出和设置持久化
 - 安装后可通过 `codex-manager` 命令行切换账号
 
@@ -87,7 +87,8 @@ codex-manager switch 2
 
 CLI 会同时更新受管账号状态和当前生效的 `~/.codex/auth.json`。
 
-如果 Codex CLI 或桌面应用已经在运行，切换后请重启它们，让新的 auth 生效。
+默认情况下，切换只会热替换 `~/.codex/auth.json`，不会主动关闭 Codex。
+如果你本机的 Codex Desktop 仍然沿用旧登录态，再在设置里开启“兼容模式：切换后重启 Codex”。
 
 对于 `.dmg` 和 `.AppImage` 安装方式，可以使用发布包里的 helper 脚本暴露全局命令：
 
@@ -178,7 +179,7 @@ npm link
 1. 读取当前共享的 `~/.codex/sessions`
 2. 写入目标账号的 `auth.json`
 3. 保持共享 session 工作集不变
-4. 如果设置开启，则切换后重启 Codex Desktop
+4. 默认只热替换 `auth.json`；如果设置开启兼容模式，则切换后重启 Codex Desktop
 
 稳定性保障：
 
@@ -193,7 +194,7 @@ npm link
 应用数据保存在系统 App Data 目录。主要文件包括：
 
 - `accounts.json`：账号列表、UI 状态和账号级 Token 分段累计
-- `settings.json`：主题、代理、自动刷新、切换后自动重启等设置
+- `settings.json`：主题、代理、自动刷新、自动预热、兼容模式重启等设置
 - `credentials/<account-id>.json`：每个账号保存的凭证
 - `sessions/<account-id>/`：旧版兼容会话目录
 

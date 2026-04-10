@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { Account } from "../types";
 import { useAccountStore } from "../store/accountStore";
 import {
+  getAccountPreheatInsight,
   formatRelativeTime,
   getAccountInsight,
   getAccountStatusReason,
@@ -50,6 +51,7 @@ const AccountCard: React.FC<AccountCardProps> = ({
   const { switchState } = useAccountStore();
   const prefersReducedMotion = useReducedMotion() ?? false;
   const insight = getAccountInsight(account);
+  const preheatInsight = getAccountPreheatInsight(account);
   const [isEditing, setIsEditing] = useState(false);
   const [draftName, setDraftName] = useState(account.displayName);
   const [isSavingName, setIsSavingName] = useState(false);
@@ -144,7 +146,10 @@ const AccountCard: React.FC<AccountCardProps> = ({
             <span>{statusLabel}</span>
             <span>·</span>
             <span>最近切换 {formatRelativeTime(account.lastSwitchedAt)}</span>
+            <span>·</span>
+            <span>{preheatInsight.label}</span>
           </div>
+          <div className="mt-2 text-xs text-slate-500">{preheatInsight.detail}</div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 lg:min-w-[260px] lg:grid-cols-3">
@@ -293,9 +298,9 @@ const AccountCard: React.FC<AccountCardProps> = ({
             </div>
 
             <div className="mt-10">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                5h 已用
-              </p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                  5H 剩余
+                </p>
               <div className="mt-3 flex items-end gap-3">
                 <p className="text-[4rem] font-black tracking-[-0.11em] text-white">
                   {insight.hourlyQuota.valueLabel.split(" ")[0] ?? insight.hourlyQuota.valueLabel}

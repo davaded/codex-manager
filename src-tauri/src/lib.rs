@@ -502,6 +502,7 @@ pub fn run() {
             desktop::restart_codex_desktop,
             desktop::get_platform_capabilities,
             usage::read_account_rate_limits,
+            usage::preheat_accounts,
             // oauth
             oauth::start_oauth_flow,
             oauth::cancel_oauth_flow,

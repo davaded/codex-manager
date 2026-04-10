@@ -5,6 +5,7 @@ import { Account } from "../types";
 export interface QuotaMetric {
   label: string;
   percent: number | null;
+  centerLabel: string;
   detail: string;
   valueLabel: string;
   tone: "critical" | "warning" | "healthy";
@@ -37,6 +38,12 @@ export interface UsageEfficiency {
   detail: string;
 }
 
+export interface AccountPreheatInsight {
+  label: string;
+  detail: string;
+  tone: "neutral" | "healthy" | "warning" | "critical";
+}
+
 interface RankedQuotaAccount {
   account: Account;
   primaryUsed: number;
@@ -47,9 +54,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function metricTone(percent: number): QuotaMetric["tone"] {
-  if (percent >= 85) return "critical";
-  if (percent >= 55) return "warning";
+function remainingMetricTone(percent: number): QuotaMetric["tone"] {
+  if (percent <= 15) return "critical";
+  if (percent <= 45) return "warning";
   return "healthy";
 }
 
@@ -122,6 +129,7 @@ function createUnavailableMetric(account: Account, label: string, suffix: string
     return {
       label,
       percent: null,
+      centerLabel: "未获取",
       detail: getAccountStatusReason(account) ?? "账号已失效或不可用",
       valueLabel: `失效 / ${suffix}`,
       tone: "critical",
@@ -132,6 +140,7 @@ function createUnavailableMetric(account: Account, label: string, suffix: string
   return {
     label,
     percent: null,
+    centerLabel: "未获取",
     detail: "官方数据未获取",
     valueLabel: `未获取 / ${suffix}`,
     tone: "warning",
@@ -141,34 +150,38 @@ function createUnavailableMetric(account: Account, label: string, suffix: string
 
 function deriveHourlyQuota(account: Account): QuotaMetric {
   if (account.rateLimits?.primary) {
-    const percent = clamp(account.rateLimits.primary.usedPercent, 0, 100);
+    const usedPercent = clamp(account.rateLimits.primary.usedPercent, 0, 100);
+    const remainingPercent = clamp(100 - usedPercent, 0, 100);
     return {
-      label: "5小时已使用配额",
-      percent,
-      detail: `刷新时间 ${formatResetTimestamp(account.rateLimits.primary.resetsAt)}`,
-      valueLabel: `${percent}% / 5h`,
-      tone: metricTone(percent),
+      label: "5小时剩余配额",
+      percent: remainingPercent,
+      centerLabel: "剩余",
+      detail: `已用 ${usedPercent}% · 刷新时间 ${formatResetTimestamp(account.rateLimits.primary.resetsAt)}`,
+      valueLabel: `${remainingPercent}% 剩余`,
+      tone: remainingMetricTone(remainingPercent),
       available: true,
     };
   }
 
-  return createUnavailableMetric(account, "5小时已使用配额", "5h");
+  return createUnavailableMetric(account, "5小时剩余配额", "5h");
 }
 
 function deriveWeeklyQuota(account: Account): QuotaMetric {
   if (account.rateLimits?.secondary) {
-    const percent = clamp(account.rateLimits.secondary.usedPercent, 0, 100);
+    const usedPercent = clamp(account.rateLimits.secondary.usedPercent, 0, 100);
+    const remainingPercent = clamp(100 - usedPercent, 0, 100);
     return {
-      label: "每周已使用配额",
-      percent,
-      detail: `刷新时间 ${formatResetTimestamp(account.rateLimits.secondary.resetsAt)}`,
-      valueLabel: `${percent}% / week`,
-      tone: metricTone(percent),
+      label: "每周剩余配额",
+      percent: remainingPercent,
+      centerLabel: "剩余",
+      detail: `已用 ${usedPercent}% · 刷新时间 ${formatResetTimestamp(account.rateLimits.secondary.resetsAt)}`,
+      valueLabel: `${remainingPercent}% 剩余`,
+      tone: remainingMetricTone(remainingPercent),
       available: true,
     };
   }
 
-  return createUnavailableMetric(account, "每周已使用配额", "week");
+  return createUnavailableMetric(account, "每周剩余配额", "week");
 }
 
 export function getHourlyUsageEfficiency(
@@ -293,11 +306,7 @@ function getRankedQuotaAccounts(accounts: Account[]): RankedQuotaAccount[] {
 }
 
 export function getRecommendedAccountId(accounts: Account[]): string | null {
-  return (
-    getRankedQuotaAccounts(accounts)
-      .find(({ account }) => !account.isActive)
-      ?.account.id ?? null
-  );
+  return getRankedQuotaAccounts(accounts)[0]?.account.id ?? null;
 }
 
 export function getBestQuotaAccount(accounts: Account[]): Account | null {
@@ -316,5 +325,36 @@ export function formatRelativeTime(iso: string | null): string {
     });
   } catch {
     return "暂无记录";
+  }
+}
+
+export function getAccountPreheatInsight(account: Account): AccountPreheatInsight {
+  const checkedLabel = account.lastPreheatAt ? formatRelativeTime(account.lastPreheatAt) : "尚未执行";
+
+  switch (account.preheatStatus) {
+    case "success":
+      return {
+        label: "预热完成",
+        detail: `${account.preheatMessage ?? "已触发轻量请求"} · ${checkedLabel}`,
+        tone: "healthy",
+      };
+    case "skipped":
+      return {
+        label: "已跳过",
+        detail: `${account.preheatMessage ?? "当前无需预热"} · ${checkedLabel}`,
+        tone: "warning",
+      };
+    case "error":
+      return {
+        label: "预热失败",
+        detail: `${account.preheatMessage ?? "请求未完成"} · ${checkedLabel}`,
+        tone: "critical",
+      };
+    default:
+      return {
+        label: "未预热",
+        detail: "尚未执行一键预热",
+        tone: "neutral",
+      };
   }
 }

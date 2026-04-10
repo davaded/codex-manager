@@ -95,7 +95,8 @@ async fn write_auth_file_normalized(path: &PathBuf, content: String) -> Result<(
 fn default_settings() -> AppSettings {
     AppSettings {
         auto_refresh_interval: 0,
-        auto_restart_codex_after_switch: true,
+        auto_preheat_interval_hours: 0,
+        auto_restart_codex_after_switch: false,
         theme: "system".to_string(),
         proxy_url: String::new(),
     }

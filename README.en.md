@@ -42,7 +42,7 @@ Codex Manager reduces both to a few desktop and tray actions.
 - Smart switch to the account with more available quota
 - Switch between account workspace and stats workspace views
 - Use a translucent tray panel for quick switching
-- Optionally restart the Codex desktop app after switching
+- Use hot switching by default, with optional desktop restart as a compatibility fallback
 - Export backups and persist app settings
 - Switch managed accounts from the command line with `codex-manager`
 
@@ -87,7 +87,8 @@ codex-manager switch 2
 
 The CLI updates both the managed `accounts.json` state and the live `~/.codex/auth.json`.
 
-If Codex CLI or the desktop app is already running, restart it after switching so the new auth takes effect.
+By default, switching only hot-swaps `~/.codex/auth.json` and does not close Codex.
+If your local Codex Desktop still holds on to the previous auth, enable the compatibility fallback to restart Codex after switching.
 
 For `.dmg` and `.AppImage` installs, the release helper script can expose the command globally:
 
@@ -178,7 +179,7 @@ Current flow:
 1. Read the current shared `~/.codex/sessions` state
 2. Write the target account's `auth.json`
 3. Keep the shared session working set unchanged
-4. Restart the Codex desktop app if the setting is enabled
+4. Hot-swap `auth.json` by default, and only restart the Codex desktop app when the compatibility setting is enabled
 
 Stability safeguards:
 
@@ -193,7 +194,7 @@ Stability safeguards:
 App data is stored in the system app-data directory. Main files include:
 
 - `accounts.json`: account list, UI state, and per-account token ledger state
-- `settings.json`: theme, proxy, auto-refresh, and restart-after-switch settings
+- `settings.json`: theme, proxy, auto-refresh, auto-preheat, and compatibility restart settings
 - `credentials/<account-id>.json`: saved credentials per account
 - `sessions/<account-id>/`: legacy compatibility session directory
 

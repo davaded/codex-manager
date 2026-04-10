@@ -1,4 +1,5 @@
 export type AccountRateLimitStatus = "available" | "invalid" | "unknown";
+export type AccountPreheatStatus = "success" | "skipped" | "error";
 
 export interface Account {
   id: string;
@@ -14,6 +15,9 @@ export interface Account {
   rateLimitsError?: string | null;
   accountStatus?: AccountRateLimitStatus | null;
   accountStatusReason?: string | null;
+  lastPreheatAt?: string | null;
+  preheatStatus?: AccountPreheatStatus | null;
+  preheatMessage?: string | null;
 }
 
 export interface SessionInfo {
@@ -79,6 +83,7 @@ export interface OAuthResult {
 
 export interface AppSettings {
   autoRefreshInterval: number; // minutes, 0 = disabled
+  autoPreheatIntervalHours: number; // hours, 0 = disabled
   autoRestartCodexAfterSwitch: boolean;
   theme: 'light' | 'dark' | 'system';
   proxyUrl: string;
@@ -148,6 +153,21 @@ export interface GetAccountRateLimitsResponse {
   rateLimitsByLimitId?: Record<string, RateLimitSnapshot> | null;
   accountStatus?: AccountRateLimitStatus | null;
   accountStatusReason?: string | null;
+}
+
+export interface PreheatAccountResult {
+  accountId: string;
+  outcome: AccountPreheatStatus;
+  message: string;
+  checkedAt: string;
+  rateLimitResult?: GetAccountRateLimitsResponse | null;
+}
+
+export interface PreheatAccountsResponse {
+  results: PreheatAccountResult[];
+  successCount: number;
+  skippedCount: number;
+  errorCount: number;
 }
 
 export interface BackupBundleAccount {

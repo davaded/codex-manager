@@ -129,7 +129,7 @@ export const useAccountSwitch = () => {
       } else if (canAutoRestartCodex) {
         showToast(`已切换到 ${toAccount.displayName}`);
       } else {
-        showToast(`已切换到 ${toAccount.displayName} · 请重新打开 Codex`);
+        showToast(`已切换到 ${toAccount.displayName} · 已替换 auth，不重启 Codex`);
       }
 
       setTimeout(

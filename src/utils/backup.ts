@@ -27,10 +27,14 @@ function normalizeBackupSettings(settings: Partial<AppSettings>): AppSettings {
       typeof settings.autoRefreshInterval === "number"
         ? settings.autoRefreshInterval
         : 0,
+    autoPreheatIntervalHours:
+      typeof settings.autoPreheatIntervalHours === "number"
+        ? settings.autoPreheatIntervalHours
+        : 0,
     autoRestartCodexAfterSwitch:
       typeof settings.autoRestartCodexAfterSwitch === "boolean"
         ? settings.autoRestartCodexAfterSwitch
-        : true,
+        : false,
     theme:
       settings.theme === "light" ||
       settings.theme === "dark" ||

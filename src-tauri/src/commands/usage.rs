@@ -4,7 +4,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use reqwest::StatusCode;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tauri::AppHandle;
 use tokio::fs;
 use uuid::Uuid;
@@ -13,8 +13,9 @@ use crate::{
     atomic_io::write_text_atomic_async,
     commands::{accounts, paths::app_data_dir},
     models::{
-        AccountRateLimitStatus, AppSettings, AuthJson, CreditsSnapshot,
-        GetAccountRateLimitsResponse, RateLimitSnapshot, RateLimitWindow, TokenResponse,
+        AccountPreheatStatus, AccountRateLimitStatus, AppSettings, AuthJson, CreditsSnapshot,
+        GetAccountRateLimitsResponse, PreheatAccountResult, PreheatAccountsResponse,
+        RateLimitSnapshot, RateLimitWindow, TokenResponse,
     },
 };
 
@@ -22,7 +23,10 @@ const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const DEFAULT_CHATGPT_BASE_URL: &str = "https://chatgpt.com";
 const CODEX_USAGE_PATH: &str = "/api/codex/usage";
 const WHAM_USAGE_PATH: &str = "/wham/usage";
+const CODEX_RESPONSES_PATH: &str = "/codex/responses";
 const BACKEND_API_PREFIX: &str = "/backend-api";
+const PREHEAT_PROMPT: &str = "hello";
+const PREHEAT_REQUEST_GAP_MS: u64 = 900;
 
 fn validate_uuid(account_id: &str) -> Result<String, String> {
     Uuid::parse_str(account_id)
@@ -182,6 +186,31 @@ fn resolve_usage_urls() -> Vec<String> {
     deduped
 }
 
+fn resolve_responses_urls() -> Vec<String> {
+    let normalized = resolve_chatgpt_base_origin();
+    let mut candidates = Vec::new();
+
+    if let Some(origin) = normalized.strip_suffix(BACKEND_API_PREFIX) {
+        candidates.push(format!("{normalized}{CODEX_RESPONSES_PATH}"));
+        candidates.push(format!("{origin}{BACKEND_API_PREFIX}{CODEX_RESPONSES_PATH}"));
+    } else {
+        candidates.push(format!("{normalized}{BACKEND_API_PREFIX}{CODEX_RESPONSES_PATH}"));
+        candidates.push(format!("{normalized}{CODEX_RESPONSES_PATH}"));
+    }
+
+    candidates.push(format!(
+        "https://chatgpt.com{BACKEND_API_PREFIX}{CODEX_RESPONSES_PATH}"
+    ));
+
+    let mut deduped = Vec::new();
+    for url in candidates {
+        if !deduped.iter().any(|existing| existing == &url) {
+            deduped.push(url);
+        }
+    }
+    deduped
+}
+
 fn read_chatgpt_base_url_from_config() -> Option<String> {
     let home = dirs::home_dir()?;
     let config_path = home.join(".codex").join("config.toml");
@@ -200,6 +229,45 @@ fn read_chatgpt_base_url_from_config() -> Option<String> {
     }
 
     None
+}
+
+fn read_model_from_config() -> Option<String> {
+    let home = dirs::home_dir()?;
+    let config_path = home.join(".codex").join("config.toml");
+    let contents = std::fs::read_to_string(config_path).ok()?;
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("model") {
+            continue;
+        }
+        let (_, value) = trimmed.split_once('=')?;
+        let cleaned = value.trim().trim_matches('"').trim_matches('\'');
+        if !cleaned.is_empty() {
+            return Some(cleaned.to_string());
+        }
+    }
+
+    None
+}
+
+fn resolve_preheat_models() -> Vec<String> {
+    let mut models = Vec::new();
+
+    if let Some(configured) = read_model_from_config() {
+        models.push(configured);
+    }
+
+    models.push("gpt-5".to_string());
+    models.push("gpt-5-codex".to_string());
+
+    let mut deduped = Vec::new();
+    for model in models {
+        if !model.trim().is_empty() && !deduped.iter().any(|existing| existing == &model) {
+            deduped.push(model);
+        }
+    }
+    deduped
 }
 
 fn format_reqwest_error(err: &reqwest::Error) -> String {
@@ -335,6 +403,77 @@ async fn request_usage_payload(
     })
 }
 
+async fn request_preheat_payload(
+    client: &reqwest::Client,
+    access_token: &str,
+    account_id: &str,
+) -> Result<(), UsageFetchError> {
+    let response_urls = resolve_responses_urls();
+    let models = resolve_preheat_models();
+    let mut errors: Vec<String> = Vec::new();
+    let mut should_refresh_auth = false;
+    let mut invalid_account = false;
+
+    for response_url in response_urls {
+        for model in &models {
+            let payload = json!({
+                "model": model,
+                "input": PREHEAT_PROMPT,
+                "store": false,
+                "stream": false,
+            });
+
+            let response = match client
+                .post(&response_url)
+                .header("Authorization", format!("Bearer {access_token}"))
+                .header("ChatGPT-Account-Id", account_id)
+                .header("Accept", "application/json")
+                .json(&payload)
+                .send()
+                .await
+            {
+                Ok(response) => response,
+                Err(err) => {
+                    errors.push(format!(
+                        "{response_url} [{model}] -> {}",
+                        format_reqwest_error(&err)
+                    ));
+                    continue;
+                }
+            };
+
+            let status = response.status();
+            if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+                should_refresh_auth = true;
+            }
+
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                invalid_account |= looks_like_invalid_account_text(&body);
+                errors.push(format!(
+                    "{response_url} [{model}] -> {status}: {}",
+                    truncate_for_error(&body, 160)
+                ));
+                continue;
+            }
+
+            return Ok(());
+        }
+    }
+
+    let preview = if errors.is_empty() {
+        "未命中任何候选地址".to_string()
+    } else {
+        errors.into_iter().take(2).collect::<Vec<_>>().join(" | ")
+    };
+
+    Err(UsageFetchError {
+        message: format!("请求预热接口失败: {preview}"),
+        should_refresh_auth,
+        invalid_account,
+    })
+}
+
 async fn refresh_auth_tokens(
     client: &reqwest::Client,
     auth: &mut AuthJson,
@@ -410,6 +549,112 @@ async fn refresh_auth_tokens(
     auth.last_refresh = Some(chrono::Utc::now().timestamp_millis());
 
     Ok(())
+}
+
+async fn persist_auth(credentials_path: &PathBuf, auth: &AuthJson) -> Result<(), String> {
+    let serialized =
+        serde_json::to_string_pretty(auth).map_err(|e| format!("auth.json 序列化失败: {e}"))?;
+    write_text_atomic_async(credentials_path.clone(), serialized)
+        .await
+        .map_err(|e| format!("更新账号凭证失败: {e}"))
+}
+
+async fn load_account_auth(
+    app: &AppHandle,
+    account_id: &str,
+) -> Result<(PathBuf, AuthJson), String> {
+    let path = credentials_path(app, account_id)?;
+    let auth_json = fs::read_to_string(&path)
+        .await
+        .map_err(|_| format!("Credentials not found for account {}", account_id))?;
+    let auth: AuthJson =
+        serde_json::from_str(&auth_json).map_err(|e| format!("auth.json 解析失败: {e}"))?;
+    Ok((path, auth))
+}
+
+fn weekly_window_is_active(response: &GetAccountRateLimitsResponse) -> bool {
+    response
+        .rate_limits
+        .as_ref()
+        .and_then(|snapshot| snapshot.secondary.as_ref())
+        .and_then(|window| window.resets_at)
+        .is_some_and(|resets_at| resets_at > chrono::Utc::now().timestamp())
+}
+
+async fn fetch_account_rate_limits_from_auth(
+    client: &reqwest::Client,
+    auth: &mut AuthJson,
+    credentials_path: &PathBuf,
+) -> Result<GetAccountRateLimitsResponse, String> {
+    let mut resolved_account_id = match extract_account_id(auth) {
+        Some(id) => id,
+        None => {
+            return Ok(invalid_account_response(invalid_account_reason(
+                "凭证中缺少账号标识，请重新登录该账号。",
+            )));
+        }
+    };
+
+    let current_access_token = match access_token(auth) {
+        Ok(token) => token.to_string(),
+        Err(message) => {
+            return Ok(invalid_account_response(invalid_account_reason(format!(
+                "{message}，请重新登录该账号。"
+            ))));
+        }
+    };
+
+    match request_usage_payload(client, &current_access_token, &resolved_account_id).await {
+        Ok(payload) => Ok(map_usage_payload(payload)),
+        Err(err) if err.should_refresh_auth => {
+            if let Err(refresh_err) = refresh_auth_tokens(client, auth).await {
+                if refresh_err.invalid_account {
+                    return Ok(invalid_account_response(invalid_account_reason(
+                        refresh_err.message,
+                    )));
+                }
+                return Err(refresh_err.message);
+            }
+
+            resolved_account_id = match extract_account_id(auth) {
+                Some(id) => id,
+                None => {
+                    return Ok(invalid_account_response(invalid_account_reason(
+                        "刷新后仍无法识别账号标识，请重新登录该账号。",
+                    )));
+                }
+            };
+            persist_auth(credentials_path, auth).await?;
+            let refreshed_access_token = match access_token(auth) {
+                Ok(token) => token.to_string(),
+                Err(message) => {
+                    return Ok(invalid_account_response(invalid_account_reason(format!(
+                        "{message}，请重新登录该账号。"
+                    ))));
+                }
+            };
+
+            match request_usage_payload(client, &refreshed_access_token, &resolved_account_id).await
+            {
+                Ok(payload) => Ok(map_usage_payload(payload)),
+                Err(refresh_err)
+                    if refresh_err.should_refresh_auth || refresh_err.invalid_account =>
+                {
+                    Ok(invalid_account_response(invalid_account_reason(
+                        refresh_err.message,
+                    )))
+                }
+                Err(refresh_err) => Err(format!(
+                    "{} | 刷新令牌后重试仍失败: {}",
+                    err.message, refresh_err.message
+                )),
+            }
+        }
+        Err(err) if err.invalid_account => Ok(invalid_account_response(invalid_account_reason(
+            err.message,
+        ))),
+        Err(err) => Err(err.message),
+    }
 }
 
 fn pick_nearest_window(windows: &[UsageWindowRaw], target_seconds: i64) -> Option<UsageWindowRaw> {
@@ -490,88 +735,234 @@ pub async fn read_account_rate_limits(
     app: AppHandle,
     account_id: String,
 ) -> Result<GetAccountRateLimitsResponse, String> {
-    let credentials_path = credentials_path(&app, &account_id)?;
-    let auth_json = fs::read_to_string(&credentials_path)
-        .await
-        .map_err(|_| format!("Credentials not found for account {}", account_id))?;
-    let mut auth: AuthJson =
-        serde_json::from_str(&auth_json).map_err(|e| format!("auth.json 解析失败: {e}"))?;
-
     let settings = accounts::load_settings(app.clone()).await?;
     let client = build_http_client(&settings)?;
+    let (credentials_path, mut auth) = load_account_auth(&app, &account_id).await?;
+    fetch_account_rate_limits_from_auth(&client, &mut auth, &credentials_path).await
+}
 
-    let mut resolved_account_id = match extract_account_id(&auth) {
+fn preheat_result(
+    account_id: String,
+    outcome: AccountPreheatStatus,
+    message: impl Into<String>,
+    checked_at: String,
+    rate_limit_result: Option<GetAccountRateLimitsResponse>,
+) -> PreheatAccountResult {
+    PreheatAccountResult {
+        account_id,
+        outcome,
+        message: message.into(),
+        checked_at,
+        rate_limit_result,
+    }
+}
+
+async fn preheat_single_account(
+    app: &AppHandle,
+    client: &reqwest::Client,
+    account_id: String,
+) -> PreheatAccountResult {
+    let checked_at = chrono::Utc::now().to_rfc3339();
+    let (credentials_path, mut auth) = match load_account_auth(app, &account_id).await {
+        Ok(value) => value,
+        Err(message) => {
+            return preheat_result(
+                account_id,
+                AccountPreheatStatus::Error,
+                message,
+                checked_at,
+                None,
+            );
+        }
+    };
+
+    let initial_rate_limit_result =
+        fetch_account_rate_limits_from_auth(client, &mut auth, &credentials_path).await;
+
+    if let Ok(rate_limit_result) = initial_rate_limit_result.as_ref() {
+        if rate_limit_result.account_status == Some(AccountRateLimitStatus::Invalid) {
+            return preheat_result(
+                account_id,
+                AccountPreheatStatus::Error,
+                rate_limit_result
+                    .account_status_reason
+                    .clone()
+                    .unwrap_or_else(|| "账号已失效或不可用".to_string()),
+                checked_at,
+                Some(rate_limit_result.clone()),
+            );
+        }
+
+        if weekly_window_is_active(rate_limit_result) {
+            return preheat_result(
+                account_id,
+                AccountPreheatStatus::Skipped,
+                "本周窗口已启动，跳过预热",
+                checked_at,
+                Some(rate_limit_result.clone()),
+            );
+        }
+    }
+
+    let resolved_account_id = match extract_account_id(&auth) {
         Some(id) => id,
         None => {
-            return Ok(invalid_account_response(invalid_account_reason(
-                "凭证中缺少账号标识，请重新登录该账号。",
-            )));
+            return preheat_result(
+                account_id,
+                AccountPreheatStatus::Error,
+                invalid_account_reason("凭证中缺少账号标识，请重新登录该账号。"),
+                checked_at,
+                initial_rate_limit_result.ok(),
+            );
         }
     };
 
     let current_access_token = match access_token(&auth) {
         Ok(token) => token.to_string(),
         Err(message) => {
-            return Ok(invalid_account_response(invalid_account_reason(format!(
-                "{message}，请重新登录该账号。"
-            ))));
+            return preheat_result(
+                account_id,
+                AccountPreheatStatus::Error,
+                invalid_account_reason(format!("{message}，请重新登录该账号。")),
+                checked_at,
+                initial_rate_limit_result.ok(),
+            );
         }
     };
 
-    match request_usage_payload(&client, &current_access_token, &resolved_account_id).await {
-        Ok(payload) => Ok(map_usage_payload(payload)),
+    let request_result = match request_preheat_payload(client, &current_access_token, &resolved_account_id)
+        .await
+    {
+        Ok(()) => Ok(()),
         Err(err) if err.should_refresh_auth => {
-            if let Err(refresh_err) = refresh_auth_tokens(&client, &mut auth).await {
+            if let Err(refresh_err) = refresh_auth_tokens(client, &mut auth).await {
                 if refresh_err.invalid_account {
-                    return Ok(invalid_account_response(invalid_account_reason(
-                        refresh_err.message,
-                    )));
+                    return preheat_result(
+                        account_id,
+                        AccountPreheatStatus::Error,
+                        invalid_account_reason(refresh_err.message),
+                        checked_at,
+                        initial_rate_limit_result.ok(),
+                    );
                 }
-                return Err(refresh_err.message);
+                return preheat_result(
+                    account_id,
+                    AccountPreheatStatus::Error,
+                    refresh_err.message,
+                    checked_at,
+                    initial_rate_limit_result.ok(),
+                );
             }
 
-            resolved_account_id = match extract_account_id(&auth) {
-                Some(id) => id,
-                None => {
-                    return Ok(invalid_account_response(invalid_account_reason(
-                        "刷新后仍无法识别账号标识，请重新登录该账号。",
-                    )));
-                }
-            };
-            let serialized = serde_json::to_string_pretty(&auth)
-                .map_err(|e| format!("auth.json 序列化失败: {e}"))?;
-            write_text_atomic_async(credentials_path.clone(), serialized)
-                .await
-                .map_err(|e| format!("更新账号凭证失败: {e}"))?;
+            if let Err(message) = persist_auth(&credentials_path, &auth).await {
+                return preheat_result(
+                    account_id,
+                    AccountPreheatStatus::Error,
+                    message,
+                    checked_at,
+                    initial_rate_limit_result.ok(),
+                );
+            }
+
             let refreshed_access_token = match access_token(&auth) {
                 Ok(token) => token.to_string(),
                 Err(message) => {
-                    return Ok(invalid_account_response(invalid_account_reason(format!(
-                        "{message}，请重新登录该账号。"
-                    ))));
+                    return preheat_result(
+                        account_id,
+                        AccountPreheatStatus::Error,
+                        invalid_account_reason(format!("{message}，请重新登录该账号。")),
+                        checked_at,
+                        initial_rate_limit_result.ok(),
+                    );
                 }
             };
 
-            match request_usage_payload(&client, &refreshed_access_token, &resolved_account_id)
+            request_preheat_payload(client, &refreshed_access_token, &resolved_account_id)
                 .await
-            {
-                Ok(payload) => Ok(map_usage_payload(payload)),
-                Err(refresh_err)
-                    if refresh_err.should_refresh_auth || refresh_err.invalid_account =>
-                {
-                    Ok(invalid_account_response(invalid_account_reason(
-                        refresh_err.message,
-                    )))
-                }
-                Err(refresh_err) => Err(format!(
-                    "{} | 刷新令牌后重试仍失败: {}",
-                    err.message, refresh_err.message
-                )),
-            }
+                .map_err(|err| err.message)
         }
-        Err(err) if err.invalid_account => Ok(invalid_account_response(invalid_account_reason(
-            err.message,
-        ))),
+        Err(err) if err.invalid_account => {
+            return preheat_result(
+                account_id,
+                AccountPreheatStatus::Error,
+                invalid_account_reason(err.message),
+                checked_at,
+                initial_rate_limit_result.ok(),
+            );
+        }
         Err(err) => Err(err.message),
+    };
+
+    if let Err(message) = request_result {
+        return preheat_result(
+            account_id,
+            AccountPreheatStatus::Error,
+            message,
+            checked_at,
+            initial_rate_limit_result.ok(),
+        );
     }
+
+    let final_rate_limit_result =
+        fetch_account_rate_limits_from_auth(client, &mut auth, &credentials_path).await.ok();
+    let message = match final_rate_limit_result.as_ref() {
+        Some(result) if weekly_window_is_active(result) => {
+            "已发送轻量请求，周限倒计时已启动".to_string()
+        }
+        Some(_) => "已发送轻量请求，等待额度接口同步".to_string(),
+        None => "已发送轻量请求，额度读取暂未同步".to_string(),
+    };
+
+    preheat_result(
+        account_id,
+        AccountPreheatStatus::Success,
+        message,
+        checked_at,
+        final_rate_limit_result.or_else(|| initial_rate_limit_result.ok()),
+    )
+}
+
+#[tauri::command]
+pub async fn preheat_accounts(app: AppHandle) -> Result<PreheatAccountsResponse, String> {
+    let store = accounts::load_accounts(app.clone()).await?;
+    if store.accounts.is_empty() {
+        return Ok(PreheatAccountsResponse {
+            results: Vec::new(),
+            success_count: 0,
+            skipped_count: 0,
+            error_count: 0,
+        });
+    }
+
+    let settings = accounts::load_settings(app.clone()).await?;
+    let client = build_http_client(&settings)?;
+    let total_accounts = store.accounts.len();
+    let mut results = Vec::with_capacity(total_accounts);
+
+    for (index, account) in store.accounts.into_iter().enumerate() {
+        results.push(preheat_single_account(&app, &client, account.id).await);
+        if index + 1 < total_accounts {
+            tokio::time::sleep(std::time::Duration::from_millis(PREHEAT_REQUEST_GAP_MS)).await;
+        }
+    }
+
+    let success_count = results
+        .iter()
+        .filter(|item| item.outcome == AccountPreheatStatus::Success)
+        .count();
+    let skipped_count = results
+        .iter()
+        .filter(|item| item.outcome == AccountPreheatStatus::Skipped)
+        .count();
+    let error_count = results
+        .iter()
+        .filter(|item| item.outcome == AccountPreheatStatus::Error)
+        .count();
+
+    Ok(PreheatAccountsResponse {
+        results,
+        success_count,
+        skipped_count,
+        error_count,
+    })
 }

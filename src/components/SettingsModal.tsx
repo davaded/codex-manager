@@ -9,6 +9,13 @@ const REFRESH_OPTIONS = [
   { value: 60, label: "60 分钟" },
 ];
 
+const PREHEAT_OPTIONS = [
+  { value: 0, label: "关闭" },
+  { value: 6, label: "每 6 小时" },
+  { value: 12, label: "每 12 小时" },
+  { value: 24, label: "每 24 小时" },
+];
+
 const SettingsModal: React.FC = () => {
   const { setSettingsOpen, settings, platformCapabilities, settingsSaveState, updateSettings } =
     useAccountStore();
@@ -71,7 +78,7 @@ const SettingsModal: React.FC = () => {
 
         <div className="grid gap-5 lg:grid-cols-[1.04fr_0.96fr]">
           <div className="space-y-5">
-            <div className="apple-panel rounded-[30px] p-5">
+            <div className="apple-panel rounded-[30px] border-dashed p-5">
               <p className="section-kicker tracking-[0.28em]">Workspace Behavior</p>
             </div>
 
@@ -79,8 +86,12 @@ const SettingsModal: React.FC = () => {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700">
-                  切换后自动重启 Codex
+                  兼容模式：切换后重启 Codex
                 </label>
+                <p className="mt-2 max-w-[28rem] text-xs leading-6 text-slate-500">
+                  默认推荐无感热切换：只替换 <code>~/.codex/auth.json</code>，不关闭 Codex。
+                  如果桌面端仍沿用旧登录态，再开启这个兜底项。
+                </p>
               </div>
               <button
                 type="button"
@@ -123,7 +134,7 @@ const SettingsModal: React.FC = () => {
                 onChange={(e) =>
                   updateSettings({ autoRefreshInterval: Number(e.target.value) })
                 }
-                className="mt-3 w-full rounded-[22px] border border-slate-200/90 bg-white/84 px-4 py-3.5 text-base text-slate-900 outline-none transition-all focus:border-sky-300 focus:bg-white focus:ring-4 focus:ring-sky-100"
+                className="clay-field mt-3 w-full rounded-[22px] px-4 py-3.5 text-base text-slate-900 outline-none transition-all"
               >
                 {REFRESH_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -132,10 +143,32 @@ const SettingsModal: React.FC = () => {
                 ))}
               </select>
             </div>
+
+            <div className="apple-panel-muted rounded-[28px] p-5">
+              <label className="section-kicker tracking-[0.28em] text-slate-500">
+                自动预热检查
+              </label>
+              <p className="mt-3 text-sm leading-6 text-slate-500">
+                仅对还没进入每周窗口倒计时的账号发送一次轻量请求，避免重复消耗。
+              </p>
+              <select
+                value={settings.autoPreheatIntervalHours}
+                onChange={(e) =>
+                  updateSettings({ autoPreheatIntervalHours: Number(e.target.value) })
+                }
+                className="clay-field mt-3 w-full rounded-[22px] px-4 py-3.5 text-base text-slate-900 outline-none transition-all"
+              >
+                {PREHEAT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="space-y-5">
-            <div className="apple-panel rounded-[30px] p-5">
+            <div className="apple-panel rounded-[30px] border-dashed p-5">
               <label className="section-kicker tracking-[0.28em] text-slate-500">
                 网络代理
               </label>
@@ -144,7 +177,7 @@ const SettingsModal: React.FC = () => {
                 value={settings.proxyUrl}
                 onChange={(event) => updateSettings({ proxyUrl: event.target.value })}
                 placeholder="例如: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"
-                className="mt-3 w-full rounded-[22px] border border-slate-200/90 bg-white/84 px-4 py-3.5 text-base text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-sky-300 focus:bg-white focus:ring-4 focus:ring-sky-100"
+                className="clay-field mt-3 w-full rounded-[22px] px-4 py-3.5 text-base text-slate-900 outline-none transition-all placeholder:text-slate-400"
               />
             </div>
 

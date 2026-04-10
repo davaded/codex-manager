@@ -50,9 +50,11 @@ const App: React.FC = () => {
   const [refreshingAccountIds, setRefreshingAccountIds] = useState<string[]>([]);
   const [isImportingCurrentAuth, setIsImportingCurrentAuth] = useState(false);
   const [isSmartSwitching, setIsSmartSwitching] = useState(false);
+  const [isPreheating, setIsPreheating] = useState(false);
   const [unmanagedCurrentAuthLabel, setUnmanagedCurrentAuthLabel] = useState<string | null>(null);
   const prefersReducedMotion = useReducedMotion() ?? false;
   const refreshingRef = useRef(false);
+  const preheatingRef = useRef(false);
   const settingsLoadedRef = useRef(false);
   const lastSavedSettingsRef = useRef<string | null>(null);
   const isTrayMode =
@@ -255,6 +257,76 @@ const App: React.FC = () => {
     }
   };
 
+  const runPreheatAccounts = async (silent = false) => {
+    if (preheatingRef.current) {
+      return false;
+    }
+
+    const latestSwitchPhase = useAccountStore.getState().switchState.phase;
+    if (refreshingRef.current || latestSwitchPhase !== "idle") {
+      return false;
+    }
+
+    preheatingRef.current = true;
+    setIsPreheating(true);
+    try {
+      const response = await api.preheatAccounts();
+      const resultMap = new Map(response.results.map((item) => [item.accountId, item]));
+      const currentAccounts = useAccountStore.getState().accounts;
+      const nextAccounts = currentAccounts.map((account) => {
+        const result = resultMap.get(account.id);
+        if (!result) {
+          return account;
+        }
+
+        const rateLimitResult = result.rateLimitResult;
+        return {
+          ...account,
+          lastPreheatAt: result.checkedAt,
+          preheatStatus: result.outcome,
+          preheatMessage: result.message,
+          rateLimits: rateLimitResult?.rateLimits ?? account.rateLimits ?? null,
+          rateLimitsError:
+            rateLimitResult?.accountStatus === "invalid"
+              ? rateLimitResult.accountStatusReason ?? "账号已失效或不可用"
+              : null,
+          accountStatus:
+            rateLimitResult?.accountStatus ??
+            (rateLimitResult?.rateLimits ? "available" : account.accountStatus ?? "unknown"),
+          accountStatusReason: rateLimitResult?.accountStatusReason ?? null,
+        };
+      });
+
+      await persistAccounts(nextAccounts);
+
+      if (!silent) {
+        const parts = [
+          response.successCount > 0 ? `成功 ${response.successCount}` : null,
+          response.skippedCount > 0 ? `跳过 ${response.skippedCount}` : null,
+          response.errorCount > 0 ? `失败 ${response.errorCount}` : null,
+        ].filter((item): item is string => Boolean(item));
+
+        showToast(parts.length > 0 ? `预热完成 · ${parts.join("，")}` : "预热完成");
+      }
+
+      return true;
+    } catch (error) {
+      showToast(
+        `${silent ? "自动预热失败" : "预热失败"} · ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return false;
+    } finally {
+      preheatingRef.current = false;
+      setIsPreheating(false);
+    }
+  };
+
+  const handlePreheatAccounts = async () => {
+    await runPreheatAccounts(false);
+  };
+
   useEffect(() => {
     void api.getPlatformCapabilities().then(setPlatformCapabilities).catch(() => undefined);
     api.loadSettings()
@@ -314,6 +386,18 @@ const App: React.FC = () => {
 
     return () => window.clearInterval(timer);
   }, [settings.autoRefreshInterval]);
+
+  useEffect(() => {
+    if (isTrayMode || settings.autoPreheatIntervalHours <= 0) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      void runPreheatAccounts(true);
+    }, settings.autoPreheatIntervalHours * 60 * 60 * 1000);
+
+    return () => window.clearInterval(timer);
+  }, [isTrayMode, settings.autoPreheatIntervalHours]);
 
   useEffect(() => {
     if (!settingsLoadedRef.current) {
@@ -481,9 +565,11 @@ const App: React.FC = () => {
                 >
                   {currentView === "accounts" ? (
                     <AccountList
+                      isPreheating={isPreheating}
                       isRefreshing={isRefreshing}
                       refreshingAccountIds={refreshingAccountIds}
                       onDelete={(id) => setConfirmState({ kind: "delete", accountId: id })}
+                      onPreheatAccounts={() => handlePreheatAccounts()}
                       onRefreshAccount={refreshAccount}
                       onRefreshUsage={() => refreshAccounts(false)}
                       onRename={handleRename}

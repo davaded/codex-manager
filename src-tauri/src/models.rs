@@ -17,6 +17,12 @@ pub struct Account {
     pub session_info: Option<SessionInfo>,
     #[serde(default)]
     pub usage_ledger: Option<AccountUsageLedger>,
+    #[serde(default)]
+    pub last_preheat_at: Option<String>,
+    #[serde(default)]
+    pub preheat_status: Option<AccountPreheatStatus>,
+    #[serde(default)]
+    pub preheat_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,6 +89,8 @@ pub struct OAuthResult {
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub auto_refresh_interval: u32,
+    #[serde(default)]
+    pub auto_preheat_interval_hours: u32,
     #[serde(default = "default_auto_restart_codex_after_switch")]
     pub auto_restart_codex_after_switch: bool,
     pub theme: String,
@@ -90,7 +98,7 @@ pub struct AppSettings {
 }
 
 fn default_auto_restart_codex_after_switch() -> bool {
-    true
+    false
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,6 +148,14 @@ pub enum AccountRateLimitStatus {
     Unknown,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AccountPreheatStatus {
+    Success,
+    Skipped,
+    Error,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetAccountRateLimitsResponse {
@@ -149,6 +165,26 @@ pub struct GetAccountRateLimitsResponse {
     pub account_status: Option<AccountRateLimitStatus>,
     #[serde(default)]
     pub account_status_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreheatAccountResult {
+    pub account_id: String,
+    pub outcome: AccountPreheatStatus,
+    pub message: String,
+    pub checked_at: String,
+    #[serde(default)]
+    pub rate_limit_result: Option<GetAccountRateLimitsResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreheatAccountsResponse {
+    pub results: Vec<PreheatAccountResult>,
+    pub success_count: usize,
+    pub skipped_count: usize,
+    pub error_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

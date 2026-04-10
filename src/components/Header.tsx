@@ -85,7 +85,7 @@ const Header: React.FC<HeaderProps> = ({
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-3 xl:flex-row xl:items-center xl:gap-5">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-[15px] bg-[linear-gradient(155deg,#151a22_0%,#273140_58%,#5c697a_100%)] text-white shadow-[0_18px_30px_-20px_rgba(22,26,31,0.62)]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[#dad4c8] bg-[linear-gradient(145deg,#f8cc65_0%,#fc7981_52%,#c1b0ff_100%)] text-slate-950 shadow-[rgba(0,0,0,0.1)_0px_1px_1px,rgba(0,0,0,0.04)_0px_-1px_1px_inset,rgba(0,0,0,0.05)_0px_-0.5px_1px]">
                 <svg
                   className="h-4.5 w-4.5"
                   fill="none"
@@ -103,7 +103,7 @@ const Header: React.FC<HeaderProps> = ({
                   <h1 className="truncate text-[1.28rem] font-black tracking-[-0.05em] text-slate-950 sm:text-[1.42rem]">
                     Codex Manager
                   </h1>
-                  <span className="rounded-full border border-white/75 bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+                  <span className="rounded-full border border-dashed border-[#dad4c8] bg-[#fffdf9] px-2.5 py-1 font-['Space_Mono'] text-[11px] font-semibold text-[#55534e]">
                     {APP_VERSION}
                   </span>
                 </div>
@@ -232,13 +232,13 @@ const Header: React.FC<HeaderProps> = ({
                 <div>
                   <p className="section-kicker text-amber-700">Current Auth</p>
                   <p className="mt-2 text-sm text-amber-900/75">
-                  当前 auth.json 属于 {unmanagedCurrentAuthLabel}，可以直接纳入这组账号。
-                </p>
-              </div>
+                    当前 auth.json 属于 {unmanagedCurrentAuthLabel}，可以直接纳入这组账号。
+                  </p>
+                </div>
                 <button
                   onClick={() => void onImportCurrentAuth()}
                   disabled={isImportingCurrentAuth}
-                  className="rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_16px_32px_-26px_rgba(217,119,6,0.8)] transition-all hover:bg-amber-600 disabled:opacity-60"
+                  className="rounded-full border border-[#d08a11] bg-[#fbbd41] px-4 py-2 text-sm font-semibold text-slate-950 shadow-[rgba(0,0,0,0.1)_0px_1px_1px,rgba(0,0,0,0.04)_0px_-1px_1px_inset] transition-all hover:translate-x-0.5 hover:-translate-y-0.5 hover:rotate-[-4deg] hover:shadow-[rgb(0,0,0)_-7px_7px] disabled:opacity-60"
                 >
                   {importButtonLabel}
                 </button>

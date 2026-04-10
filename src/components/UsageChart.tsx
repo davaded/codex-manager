@@ -18,7 +18,7 @@ const TONE_COLORS: Record<QuotaMetric["tone"], string> = {
 };
 
 function buildSeries(metric: QuotaMetric) {
-  const usedPercent = metric.available && metric.percent !== null ? metric.percent : null;
+  const valuePercent = metric.available && metric.percent !== null ? metric.percent : null;
 
   return {
     type: "pie",
@@ -30,7 +30,7 @@ function buildSeries(metric: QuotaMetric) {
     labelLine: { show: false },
     emphasis: { disabled: true },
     data:
-      usedPercent === null
+      valuePercent === null
         ? [
             {
               value: 100,
@@ -44,7 +44,7 @@ function buildSeries(metric: QuotaMetric) {
           ]
         : [
             {
-              value: usedPercent,
+              value: valuePercent,
               itemStyle: {
                 color: TONE_COLORS[metric.tone],
                 shadowBlur: 18,
@@ -52,7 +52,7 @@ function buildSeries(metric: QuotaMetric) {
               },
             },
             {
-              value: Math.max(0, 100 - usedPercent),
+              value: Math.max(0, 100 - valuePercent),
               itemStyle: {
                 color: "#f1efeb",
               },
@@ -62,9 +62,9 @@ function buildSeries(metric: QuotaMetric) {
       show: true,
       position: "center",
       formatter:
-        usedPercent === null
+        valuePercent === null
           ? "{value|--}\n{name|未获取}"
-          : `{value|${usedPercent}%}\n{name|已使用}`,
+          : `{value|${valuePercent}%}\n{name|${metric.centerLabel}}`,
       rich: {
         value: {
           fontSize: 18,

@@ -5,6 +5,7 @@ import {
   DesktopPlatformCapabilities,
   GetAccountRateLimitsResponse,
   OAuthResult,
+  PreheatAccountsResponse,
   RestoreResult,
   SessionInfo,
   SnapshotResult,
@@ -104,7 +105,8 @@ const demoCredentials: Record<string, string> = {
 
 const demoSettings: AppSettings = {
   autoRefreshInterval: 0,
-  autoRestartCodexAfterSwitch: true,
+  autoPreheatIntervalHours: 0,
+  autoRestartCodexAfterSwitch: false,
   theme: "system",
   proxyUrl: "",
 };
@@ -431,6 +433,82 @@ const browserApi = {
   async getAccountSessionsDir(accountId: string): Promise<string> {
     return `~/.codex-manager/mock-sessions/${accountId}`;
   },
+  async preheatAccounts(): Promise<PreheatAccountsResponse> {
+    const now = new Date().toISOString();
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const store = readMockAccounts();
+
+    const results = store.accounts.map((account) => {
+      if (account.accountStatus === "invalid") {
+        return {
+          accountId: account.id,
+          outcome: "error" as const,
+          message: account.accountStatusReason ?? "账号已失效或不可用",
+          checkedAt: now,
+          rateLimitResult: {
+            rateLimits: account.rateLimits ?? null,
+            rateLimitsByLimitId:
+              account.rateLimits?.limitId
+                ? { [account.rateLimits.limitId]: account.rateLimits }
+                : null,
+            accountStatus: account.accountStatus ?? "invalid",
+            accountStatusReason: account.accountStatusReason ?? "账号已失效或不可用",
+          },
+        };
+      }
+
+      if (
+        typeof account.rateLimits?.secondary?.resetsAt === "number" &&
+        account.rateLimits.secondary.resetsAt > nowSeconds
+      ) {
+        return {
+          accountId: account.id,
+          outcome: "skipped" as const,
+          message: "本周窗口已启动，跳过预热",
+          checkedAt: now,
+          rateLimitResult: {
+            rateLimits: account.rateLimits ?? null,
+            rateLimitsByLimitId:
+              account.rateLimits?.limitId
+                ? { [account.rateLimits.limitId]: account.rateLimits }
+                : null,
+            accountStatus: account.accountStatus ?? "available",
+            accountStatusReason: account.accountStatusReason ?? null,
+          },
+        };
+      }
+
+      const nextRateLimits = {
+        ...account.rateLimits,
+        secondary: {
+          usedPercent: Math.max(1, account.rateLimits?.secondary?.usedPercent ?? 1),
+          windowDurationMins: 7 * 24 * 60,
+          resetsAt: nowSeconds + 7 * 24 * 60 * 60,
+        },
+      };
+
+      return {
+        accountId: account.id,
+        outcome: "success" as const,
+        message: "已发送轻量请求，周限倒计时已启动",
+        checkedAt: now,
+        rateLimitResult: {
+          rateLimits: nextRateLimits,
+          rateLimitsByLimitId:
+            nextRateLimits.limitId ? { [nextRateLimits.limitId]: nextRateLimits } : null,
+          accountStatus: "available" as const,
+          accountStatusReason: null,
+        },
+      };
+    });
+
+    return {
+      results,
+      successCount: results.filter((item) => item.outcome === "success").length,
+      skippedCount: results.filter((item) => item.outcome === "skipped").length,
+      errorCount: results.filter((item) => item.outcome === "error").length,
+    };
+  },
 };
 
 export const api = isTauriRuntime
@@ -466,6 +544,7 @@ export const api = isTauriRuntime
       readUsageStatsSummary: () => invoke<UsageStatsSummary>("read_usage_stats_summary"),
       deleteAccountSessions: (accountId: string) =>
         invoke<void>("delete_account_sessions", { accountId }),
+      preheatAccounts: () => invoke<PreheatAccountsResponse>("preheat_accounts"),
       resumeSessionInTerminal: (sessionId: string) =>
         invoke<void>("resume_session_in_terminal", { sessionId }),
       restartCodexDesktop: () => invoke<void>("restart_codex_desktop"),

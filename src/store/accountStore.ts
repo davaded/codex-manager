@@ -37,7 +37,8 @@ const initialSwitchState: SwitchState = {
 
 const defaultSettings: AppSettings = {
   autoRefreshInterval: 0,
-  autoRestartCodexAfterSwitch: true,
+  autoPreheatIntervalHours: 0,
+  autoRestartCodexAfterSwitch: false,
   theme: "system",
   proxyUrl: "",
 };
