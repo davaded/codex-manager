@@ -46,6 +46,40 @@ describe("quota compass", () => {
     expect(summary.estimatedTotalUsd).toBe(0.8);
   });
 
+  it("estimates credits from model token usage when official credits are zero", () => {
+    const summary = buildQuotaCompassSummary(
+      [
+        {
+          date: "2026-03-12",
+          totals: {
+            credits: 0,
+            turns: 4,
+            cachedTextInputTokens: 1_000_000,
+            uncachedTextInputTokens: 1_000_000,
+            textOutputTokens: 100_000,
+          },
+          models: [
+            {
+              model: "gpt-5.5",
+              credits: 0,
+              cachedTextInputTokens: 1_000_000,
+              uncachedTextInputTokens: 1_000_000,
+              textOutputTokens: 100_000,
+              textTotalTokens: 2_100_000,
+            },
+          ],
+        },
+      ],
+      "2026-03-10",
+      { remainingPercent: 75 },
+    );
+
+    expect(summary.currentStats.usd).toBeCloseTo(8.5, 6);
+    expect(summary.currentStats.credits).toBeCloseTo(212.5, 6);
+    expect(summary.estimatedTotalUsd).toBeCloseTo(34, 6);
+    expect(summary.estimatedTotalCredits).toBeCloseTo(850, 6);
+  });
+
   it("formats token numbers with K and M units", () => {
     expect(formatCompactTokenNumber(980)).toBe("980");
     expect(formatCompactTokenNumber(12_340)).toBe("12.34K");

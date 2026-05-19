@@ -210,12 +210,48 @@ pub struct DailyWorkspaceUsageTotals {
     pub text_output_tokens: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyWorkspaceUsageBreakdown {
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    #[serde(alias = "client_id")]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub users: Option<u64>,
+    #[serde(default)]
+    pub threads: Option<u64>,
+    #[serde(default)]
+    pub turns: Option<u64>,
+    #[serde(default)]
+    pub credits: Option<f64>,
+    #[serde(default)]
+    pub on_demand_credits: Option<f64>,
+    #[serde(default)]
+    #[serde(alias = "text_total_tokens")]
+    pub text_total_tokens: Option<u64>,
+    #[serde(default)]
+    #[serde(alias = "cached_text_input_tokens")]
+    pub cached_text_input_tokens: Option<u64>,
+    #[serde(default)]
+    #[serde(alias = "uncached_text_input_tokens")]
+    pub uncached_text_input_tokens: Option<u64>,
+    #[serde(default)]
+    #[serde(alias = "text_output_tokens")]
+    pub text_output_tokens: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DailyWorkspaceUsage {
     pub date: String,
     #[serde(default)]
     pub totals: Option<DailyWorkspaceUsageTotals>,
+    #[serde(default)]
+    pub models: Option<Vec<DailyWorkspaceUsageBreakdown>>,
+    #[serde(default)]
+    pub clients: Option<Vec<DailyWorkspaceUsageBreakdown>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

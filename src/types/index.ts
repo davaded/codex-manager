@@ -133,9 +133,18 @@ export interface DailyWorkspaceUsageTotals {
   textOutputTokens?: number | null;
 }
 
+export interface DailyWorkspaceUsageBreakdown extends DailyWorkspaceUsageTotals {
+  model?: string | null;
+  clientId?: string | null;
+  users?: number | null;
+  threads?: number | null;
+}
+
 export interface DailyWorkspaceUsage {
   date: string;
   totals?: DailyWorkspaceUsageTotals | null;
+  models?: DailyWorkspaceUsageBreakdown[] | null;
+  clients?: DailyWorkspaceUsageBreakdown[] | null;
 }
 
 export interface DailyWorkspaceUsageResponse {

@@ -4,8 +4,13 @@ import { useAccountStore } from "../store/accountStore";
 import { isAccountInvalid } from "../utils/dashboard";
 import { api } from "../utils/invoke";
 import { revealUp } from "../utils/motion";
-import { buildQuotaCompassSummary, getCycleStartDate } from "../utils/quotaCompass";
-import type { Account, DailyWorkspaceUsageResponse } from "../types";
+import {
+  buildQuotaCompassSummary,
+  formatCompactTokenNumber,
+  getCycleStartDate,
+  getQuotaCompassStats,
+} from "../utils/quotaCompass";
+import type { Account, DailyWorkspaceUsage, DailyWorkspaceUsageResponse } from "../types";
 
 interface UsageStatsPageProps {
   isRefreshing: boolean;
@@ -26,11 +31,91 @@ function formatUsd(value: number | null | undefined): string {
   return `$${value.toFixed(2)}`;
 }
 
+function formatTableCredits(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "0.000";
+  }
+  return value.toFixed(3);
+}
+
 function formatCompassPercent(value: number | null | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return "--";
   }
   return `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
+}
+
+function formatHistoryTitle(list: DailyWorkspaceUsage[]): string {
+  if (list.length === 0) {
+    return "历史记录 (本周期外)";
+  }
+
+  const sorted = [...list].sort((left, right) => left.date.localeCompare(right.date));
+  return `历史记录 (本周期外 ${sorted[0].date} 至 ${sorted[sorted.length - 1].date})`;
+}
+
+function UsageDetailTable({
+  rows,
+  totalLabel,
+}: {
+  rows: DailyWorkspaceUsage[];
+  totalLabel: string;
+}) {
+  const stats = getQuotaCompassStats(rows);
+  const displayRows = [...rows].sort((left, right) => right.date.localeCompare(left.date));
+
+  return (
+    <div className="overflow-hidden rounded-[12px] border border-slate-200 bg-white">
+      <div className="max-h-[220px] overflow-auto">
+        <table className="w-full border-collapse text-left text-xs">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-slate-500">
+            <tr>
+              <th className="border-b border-slate-200 px-3 py-2 font-semibold">日期</th>
+              <th className="border-b border-slate-200 px-3 py-2 font-semibold">Credits</th>
+              <th className="border-b border-slate-200 px-3 py-2 font-semibold">Tokens</th>
+              <th className="border-b border-slate-200 px-3 py-2 font-semibold">金额</th>
+              <th className="border-b border-slate-200 px-3 py-2 font-semibold">轮数</th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayRows.map((row) => {
+              const rowStats = getQuotaCompassStats([row]);
+              return (
+                <tr key={row.date} className="border-b border-slate-100 last:border-b-0">
+                  <td className="px-3 py-2 text-slate-600">{row.date}</td>
+                  <td className="px-3 py-2 font-mono text-slate-700">
+                    {formatTableCredits(rowStats.credits)}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-slate-700">
+                    {formatCompactTokenNumber(rowStats.tokens)}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-emerald-700">
+                    {formatUsd(rowStats.usd)}
+                  </td>
+                  <td className="px-3 py-2 text-slate-600">{rowStats.turns}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot className="sticky bottom-0 bg-slate-50 font-bold text-slate-800">
+            <tr>
+              <td className="border-t border-slate-200 px-3 py-2">{totalLabel}</td>
+              <td className="border-t border-slate-200 px-3 py-2 font-mono">
+                {formatTableCredits(stats.credits)}
+              </td>
+              <td className="border-t border-slate-200 px-3 py-2 font-mono">
+                {formatCompactTokenNumber(stats.tokens)}
+              </td>
+              <td className="border-t border-slate-200 px-3 py-2 font-mono text-emerald-700">
+                {formatUsd(stats.usd)}
+              </td>
+              <td className="border-t border-slate-200 px-3 py-2">{stats.turns}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 function AccountQuotaSummary({
@@ -139,6 +224,26 @@ function AccountQuotaSummary({
           </div>
         ))}
       </div>
+
+      {summary && (
+        <div className="space-y-4">
+          <div>
+            <p className="mb-2 text-sm font-bold text-slate-700">
+              本周期明细 (始于 {cycleStartDate})
+            </p>
+            <UsageDetailTable rows={summary.currentCycleList} totalLabel="合计" />
+          </div>
+
+          {summary.historyList.length > 0 && (
+            <div>
+              <p className="mb-2 text-sm font-bold text-slate-500">
+                {formatHistoryTitle(summary.historyList)}
+              </p>
+              <UsageDetailTable rows={summary.historyList} totalLabel="合计" />
+            </div>
+          )}
+        </div>
+      )}
     </motion.article>
   );
 }

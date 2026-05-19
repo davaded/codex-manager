@@ -1,8 +1,11 @@
 import type {
   DailyWorkspaceUsage,
+  DailyWorkspaceUsageBreakdown,
   DailyWorkspaceUsageTotals,
   RateLimitWindow,
+  TokenUsageInfo,
 } from "../types";
+import { estimateTokenSpendUsd } from "./quotaValue";
 
 export const USD_PER_CODEX_CREDIT = 40 / 1000;
 
@@ -49,19 +52,50 @@ export function getDailyTokenTotal(totals: DailyWorkspaceUsageTotals | null | un
   );
 }
 
+function toTokenUsage(usage: DailyWorkspaceUsageTotals | DailyWorkspaceUsageBreakdown): TokenUsageInfo {
+  const inputTokens =
+    numberOrZero(usage.cachedTextInputTokens) + numberOrZero(usage.uncachedTextInputTokens);
+  const outputTokens = numberOrZero(usage.textOutputTokens);
+  const totalTokens = getDailyTokenTotal(usage);
+
+  return {
+    inputTokens,
+    cachedInputTokens: numberOrZero(usage.cachedTextInputTokens),
+    outputTokens,
+    reasoningOutputTokens: 0,
+    totalTokens: totalTokens > 0 ? totalTokens : inputTokens + outputTokens,
+  };
+}
+
+function getDailyUsdTotal(day: DailyWorkspaceUsage): number {
+  const creditedUsd = numberOrZero(day.totals?.credits) * USD_PER_CODEX_CREDIT;
+  if (creditedUsd > 0) {
+    return creditedUsd;
+  }
+
+  return (day.models ?? []).reduce((sum, modelUsage) => {
+    const spentUsd = estimateTokenSpendUsd(toTokenUsage(modelUsage), modelUsage.model);
+    return sum + numberOrZero(spentUsd);
+  }, 0);
+}
+
 export function getQuotaCompassStats(list: DailyWorkspaceUsage[]): QuotaCompassStats {
   const totals = list.reduce(
     (sum, day) => ({
       credits: sum.credits + numberOrZero(day.totals?.credits),
       turns: sum.turns + numberOrZero(day.totals?.turns),
       tokens: sum.tokens + getDailyTokenTotal(day.totals),
+      usd: sum.usd + getDailyUsdTotal(day),
     }),
-    { credits: 0, turns: 0, tokens: 0 },
+    { credits: 0, turns: 0, tokens: 0, usd: 0 },
   );
+  const credits = totals.credits > 0 ? totals.credits : totals.usd / USD_PER_CODEX_CREDIT;
 
   return {
-    ...totals,
-    usd: totals.credits * USD_PER_CODEX_CREDIT,
+    credits,
+    turns: totals.turns,
+    tokens: totals.tokens,
+    usd: totals.usd,
   };
 }
 
@@ -114,6 +148,8 @@ export function buildQuotaCompassSummary(
   const usedPercent = getWindowUsedPercent(weeklyWindow);
   const estimatedTotalCredits =
     usedPercent && usedPercent > 0 ? currentStats.credits / (usedPercent / 100) : null;
+  const estimatedTotalUsd =
+    usedPercent && usedPercent > 0 ? currentStats.usd / (usedPercent / 100) : null;
 
   return {
     currentCycleList,
@@ -122,8 +158,7 @@ export function buildQuotaCompassSummary(
     historyStats,
     usedPercent,
     estimatedTotalCredits,
-    estimatedTotalUsd:
-      estimatedTotalCredits === null ? null : estimatedTotalCredits * USD_PER_CODEX_CREDIT,
+    estimatedTotalUsd,
   };
 }
 
