@@ -14,6 +14,7 @@ export interface CurrentAuthState {
 }
 
 interface HydrateAccountsOptions {
+  refreshAllRateLimits?: boolean;
   refreshRateLimitAccountIds?: ReadonlySet<string>;
 }
 
@@ -63,7 +64,9 @@ export async function hydrateAccounts(
           ? account.id === activeAccountId
           : false;
       const shouldRefreshRateLimits =
-        isActive || options.refreshRateLimitAccountIds?.has(account.id) === true;
+        options.refreshAllRateLimits === true ||
+        isActive ||
+        options.refreshRateLimitAccountIds?.has(account.id) === true;
       const rateLimitResult = shouldRefreshRateLimits
         ? await api
             .readAccountRateLimits(account.id)

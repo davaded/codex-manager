@@ -92,6 +92,30 @@ describe("hydrateAccounts", () => {
     expect(hydrated.rateLimits?.secondary?.remainingPercent).toBe(65);
   });
 
+  it("refreshes quota for every account when requested", async () => {
+    const active = createAccount({ id: "active", isActive: true });
+    const standby = createAccount({
+      id: "standby",
+      email: "standby@example.com",
+      rateLimits: {
+        limitId: "codex",
+        planType: "team",
+        primary: { remainingPercent: 23, windowDurationMins: 300, resetsAt: 900 },
+        secondary: { remainingPercent: 65, windowDurationMins: 10_080, resetsAt: 500_000 },
+      },
+      accountStatus: "available",
+    });
+
+    const hydrated = await hydrateAccounts([active, standby], { refreshAllRateLimits: true });
+
+    expect(apiMock.readAccountRateLimits).toHaveBeenCalledTimes(2);
+    expect(apiMock.readAccountRateLimits).toHaveBeenCalledWith("active");
+    expect(apiMock.readAccountRateLimits).toHaveBeenCalledWith("standby");
+    expect(hydrated.find((account) => account.id === "active")?.rateLimits?.primary?.remainingPercent).toBe(99);
+    expect(hydrated.find((account) => account.id === "standby")?.rateLimits?.primary?.remainingPercent).toBe(99);
+    expect(hydrated.find((account) => account.id === "standby")?.rateLimits?.secondary?.remainingPercent).toBe(41);
+  });
+
   it("refreshes quota for a selected standby account", async () => {
     const standby = createAccount({
       id: "standby",

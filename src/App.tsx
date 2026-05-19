@@ -116,7 +116,7 @@ const App: React.FC = () => {
     setIsRefreshing(true);
     try {
       const store = await api.loadAccounts();
-      const hydrated = await hydrateAccounts(store.accounts);
+      const hydrated = await hydrateAccounts(store.accounts, { refreshAllRateLimits: true });
       setAccounts(hydrated);
       const invalidAccounts = hydrated.filter((account) => isAccountInvalid(account));
       const rateLimitFailures = hydrated.filter(
