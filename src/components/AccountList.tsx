@@ -76,15 +76,15 @@ const AccountList: React.FC<AccountListProps> = ({
       {featuredAccount && (
         <div className="grid items-stretch gap-2.5 xl:grid-cols-[minmax(0,1fr)_240px]">
           <motion.article
-            className="relative h-full overflow-hidden rounded-[22px] bg-[linear-gradient(145deg,#13181f_0%,#1c252f_54%,#2a3642_100%)] px-4 py-3 text-white shadow-[0_24px_58px_-46px_rgba(15,23,42,0.82)]"
+            className="relative overflow-hidden rounded-[22px] bg-[linear-gradient(145deg,#13181f_0%,#1c252f_54%,#2a3642_100%)] px-4 py-4 text-white shadow-[0_24px_58px_-46px_rgba(15,23,42,0.82)]"
             {...revealUp(prefersReducedMotion, 0.04)}
           >
             <div className="pointer-events-none absolute inset-0">
               <div className="absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),transparent_70%)]" />
             </div>
 
-            <div className="relative grid gap-3 lg:grid-cols-[minmax(190px,0.9fr)_190px_minmax(260px,0.9fr)_180px] lg:items-center">
-              <div className="min-w-0">
+            <div className="relative grid gap-3 lg:grid-cols-[minmax(230px,1.1fr)_180px_minmax(230px,0.9fr)_180px] lg:items-center">
+              <div className="flex min-w-0 flex-col justify-center">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-400">
                     Current
@@ -102,9 +102,15 @@ const AccountList: React.FC<AccountListProps> = ({
                   </span>
                   <span className="truncate">{featuredIdentity}</span>
                 </div>
+                <button
+                  onClick={() => onDelete(featuredAccount.id)}
+                  className="mt-3 w-fit rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5 text-[11px] font-semibold text-white/50 transition-all hover:border-rose-200/35 hover:bg-rose-500/10 hover:text-rose-50"
+                >
+                  删除账号
+                </button>
               </div>
 
-              <div className="rounded-[18px] border border-white/10 bg-white/[0.045] px-3 py-2.5">
+              <div className="min-h-[74px] rounded-[18px] border border-white/10 bg-white/[0.045] px-3.5 py-3">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                   5h 剩余
                 </p>
@@ -121,7 +127,7 @@ const AccountList: React.FC<AccountListProps> = ({
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-[16px] border border-white/10 bg-white/[0.055] px-3 py-2">
+                <div className="min-h-[62px] rounded-[16px] border border-white/10 bg-white/[0.055] px-3 py-2.5">
                   <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-400">
                     本周
                   </p>
@@ -129,7 +135,7 @@ const AccountList: React.FC<AccountListProps> = ({
                     {featuredInsight?.weeklyQuota.valueLabel ?? "--"}
                   </p>
                 </div>
-                <div className="rounded-[16px] border border-white/10 bg-white/[0.055] px-3 py-2">
+                <div className="min-h-[62px] rounded-[16px] border border-white/10 bg-white/[0.055] px-3 py-2.5">
                   <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-400">
                     更新
                   </p>
@@ -139,7 +145,7 @@ const AccountList: React.FC<AccountListProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col justify-center gap-2">
                 <button
                   onClick={() => void onRefreshAccount(featuredAccount.id)}
                   disabled={refreshingAccountIds.includes(featuredAccount.id) || isRefreshing}
@@ -170,12 +176,6 @@ const AccountList: React.FC<AccountListProps> = ({
                         : "切换到此账号"}
                   </button>
                 )}
-                <button
-                  onClick={() => onDelete(featuredAccount.id)}
-                  className="mt-1 rounded-full border border-white/10 bg-transparent px-3 py-1.5 text-[11px] font-semibold text-white/56 transition-all hover:border-rose-200/35 hover:bg-rose-500/10 hover:text-rose-50"
-                >
-                  删除账号
-                </button>
               </div>
 
               {featuredInvalid && (
