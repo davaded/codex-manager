@@ -48,13 +48,13 @@ Codex Manager reduces both to a few desktop and tray actions.
 
 ## Installation
 
-Recommended: download a packaged build from GitHub Releases.
+Recommended: download the Windows packaged build from GitHub Releases.
 
-- Windows: `.msi` or `.exe`
-- macOS: `.dmg`
-- Linux: `.deb`, `.rpm`, or `.AppImage`
+- Windows: `codex-manager_<version>_x64-setup.exe`
 
 Releases: <https://github.com/davaded/codex-manager/releases>
+
+For macOS, build the DMG locally with `npm run tauri:build:macos`. The output is written to `src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/`.
 
 ### CLI Availability
 
@@ -62,16 +62,13 @@ After installation, the `codex-manager` command behaves like this:
 
 | Platform | Recommended package | CLI availability |
 | --- | --- | --- |
-| Windows | `.exe` or `.msi` | Installed to `PATH` automatically |
-| macOS | `.dmg` | Use the bundled helper script once |
-| Linux | `.deb` or `.rpm` | Available directly as `codex-manager` |
-| Linux | `.AppImage` | Use the helper script once, or keep it portable |
+| Windows | `codex-manager_<version>_x64-setup.exe` | Installed to `PATH` automatically |
+| macOS | Locally built `codex-manager_<version>_aarch64.dmg` | Use the repo helper script to add it to `PATH` |
 
 Notes:
 
 - On Windows, reopen your terminal after installation so the new `PATH` is picked up.
-- On macOS, the release ships as a `.dmg`. If you also want a global `codex-manager` command, run the bundled helper script once after dragging the app into `/Applications`.
-- On Linux, prefer `.deb` or `.rpm` if you want a package-managed CLI experience.
+- After building the macOS DMG locally, if you also want a global `codex-manager` command, drag the app into `/Applications`, then run `scripts/install-unix-cli.sh` from this repo.
 - The app reads and writes `~/.codex/auth.json`, so Codex CLI should already be installed and working.
 
 ## Command Line Switching
@@ -89,7 +86,7 @@ The CLI updates both the managed `accounts.json` state and the live `~/.codex/au
 
 If Codex CLI or the desktop app is already running, restart it after switching so the new auth takes effect.
 
-For `.dmg` and `.AppImage` installs, the release helper script can expose the command globally:
+For `.dmg` installs, the repo helper script can expose the command globally:
 
 ```bash
 sudo bash ./install-unix-cli.sh /Applications/codex-manager.app /usr/local/bin/codex-manager
@@ -141,9 +138,9 @@ If the auth state already belongs to an existing account, the app updates that a
 
 Current rule set:
 
-- Prefer the account with the lowest `5h` usage
-- If `5h` usage is tied, compare weekly usage
-- If the active account is already the best choice, do nothing
+- Switch when the active account has less than 5% `5h` quota left, or less than 2% weekly quota left
+- Candidate accounts must have valid quota data
+- Candidate accounts are ranked by `5h` remaining quota first, then weekly remaining quota
 
 ## Token Tracking
 
@@ -216,25 +213,16 @@ Install dependencies:
 npm install
 ```
 
-Run Tauri in development:
+Command reference:
 
-```bash
-npm run tauri dev
-```
-
-Run the frontend only:
-
-```bash
-npm run dev
-```
-
-Build checks:
-
-```bash
-npm run build
-cd src-tauri
-cargo check
-```
+- `npm run tauri dev`: starts the full development environment, including Vite and the Tauri desktop app.
+- `npm run dev`: starts only the Vite web frontend.
+- `npm run test`: runs Vitest.
+- `npm run build`: runs TypeScript checks and builds the frontend assets.
+- `npm run tauri:build:windows`: creates the Windows NSIS installer.
+- `npm run tauri:build:macos`: creates the macOS DMG installer.
+- `npm run preview`: previews the frontend build output.
+- `npm run cli`: runs the local CLI entrypoint.
 
 ## Roadmap
 

@@ -15,6 +15,7 @@ use tokio::sync::{oneshot, Mutex};
 
 use crate::commands::accounts;
 use crate::models::{AuthJson, AuthTokens, OAuthResult, TokenResponse};
+use crate::net::build_http_client;
 
 const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const AUTH_ENDPOINT: &str = "https://auth.openai.com/oauth/authorize";
@@ -149,15 +150,11 @@ async fn exchange_code(
     verifier: &str,
 ) -> Result<TokenResponse, String> {
     let settings = accounts::load_settings(app.clone()).await?;
-    let mut client_builder = reqwest::Client::builder();
-
-    if !settings.proxy_url.trim().is_empty() {
-        let proxy = reqwest::Proxy::all(settings.proxy_url.trim())
-            .map_err(|e| format!("Invalid proxy URL: {}", e))?;
-        client_builder = client_builder.proxy(proxy);
-    }
-
-    let client = client_builder.build().map_err(|e| e.to_string())?;
+    let client = build_http_client(
+        &settings,
+        "codex-manager/1.0",
+        std::time::Duration::from_secs(30),
+    )?;
     let params = [
         ("grant_type", "authorization_code"),
         ("client_id", CLIENT_ID),
@@ -176,6 +173,11 @@ async fn exchange_code(
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
+        if body.contains("unsupported_country_region_territory") {
+            return Err(format!(
+                "Token exchange failed ({status}): 当前网络被 OpenAI 判定为不支持的地区。请在设置中配置可用代理，或启用系统代理后重试。{body}"
+            ));
+        }
         return Err(format!("Token exchange failed ({}): {}", status, body));
     }
 

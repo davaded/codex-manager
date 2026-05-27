@@ -11,15 +11,7 @@ permissions:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-          - platform: ubuntu-22.04
-          - platform: windows-latest
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
 
     steps:
       - name: Checkout
@@ -34,33 +26,45 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Linux dependencies
-        if: startsWith(matrix.platform, 'ubuntu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf
-
       - name: Install dependencies
         run: npm ci
 
-      - name: Build & Release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Codex Manager ${{ github.ref_name }}"
-          releaseBody: "See the assets to download and install this version."
-          releaseDraft: false
-          prerelease: false
+      - name: Build installer
+        run: npm run tauri:build:windows
 
-      - name: Upload macOS Unix helper
-        if: matrix.platform == 'macos-latest' && startsWith(github.ref, 'refs/tags/')
+      - name: Prepare release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p release-assets
+          matches=(src-tauri/target/release/bundle/nsis/*.exe)
+          if [ "${#matches[@]}" -ne 1 ]; then
+            printf 'Expected one asset for src-tauri/target/release/bundle/nsis/*.exe, found %s\n' "${#matches[@]}"
+            printf '%s\n' "${matches[@]}"
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          asset_name="codex-manager_${version}_x64-setup.exe"
+          cp "${matches[0]}" "release-assets/${asset_name}"
+          printf 'ASSET_PATH=release-assets/%s\n' "${asset_name}" >> "${GITHUB_ENV}"
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" scripts/install-unix-cli.sh --clobber
+          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "Codex Manager ${GITHUB_REF_NAME}" \
+              --notes "See the assets to download and install this version." || \
+              gh release view "${GITHUB_REF_NAME}" >/dev/null
+          fi
+
+      - name: Upload installer
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" "${ASSET_PATH}" --clobber

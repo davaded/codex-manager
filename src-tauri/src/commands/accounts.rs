@@ -96,6 +96,7 @@ fn default_settings() -> AppSettings {
     AppSettings {
         auto_refresh_interval: 0,
         auto_restart_codex_after_switch: true,
+        auto_restart_vscode_after_switch: false,
         theme: "system".to_string(),
         proxy_url: String::new(),
     }

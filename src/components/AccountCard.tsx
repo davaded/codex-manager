@@ -72,6 +72,19 @@ const AccountCard: React.FC<AccountCardProps> = ({
         ? "切换中"
         : "待命";
   const invalidReason = getAccountStatusReason(account);
+  const renderCompactQuota = (metric: typeof insight.hourlyQuota) => (
+    <div className="min-w-0">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+        {metric.label.startsWith("5") ? "5h" : "Week"}
+      </div>
+      <div className="mt-1 text-sm font-semibold text-slate-950">
+        {typeof metric.percent === "number" ? `${Math.round(metric.percent)}%` : metric.valueLabel}
+      </div>
+      <div className="mt-0.5 truncate text-[11px] font-medium text-slate-500">
+        {metric.resetLabel ? `重置 ${metric.resetLabel}` : metric.detail}
+      </div>
+    </div>
+  );
 
   useEffect(() => {
     setDraftName(account.displayName);
@@ -95,7 +108,7 @@ const AccountCard: React.FC<AccountCardProps> = ({
     return (
       <motion.article
         layout
-        className="apple-panel flex flex-col gap-4 rounded-[28px] px-5 py-4 lg:flex-row lg:items-center lg:justify-between"
+        className="apple-panel grid gap-4 rounded-[28px] px-5 py-4 lg:grid-cols-[minmax(0,1fr)_390px_172px] lg:items-center"
         whileHover={hoverLift(prefersReducedMotion)}
       >
         <div className="min-w-0 flex-1">
@@ -147,23 +160,9 @@ const AccountCard: React.FC<AccountCardProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 lg:min-w-[260px] lg:grid-cols-3">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-              5h
-            </div>
-            <div className="mt-1 text-sm font-semibold text-slate-950">
-              {insight.hourlyQuota.valueLabel}
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Week
-            </div>
-            <div className="mt-1 text-sm font-semibold text-slate-950">
-              {insight.weeklyQuota.valueLabel}
-            </div>
-          </div>
+        <div className="grid grid-cols-[58px_minmax(132px,1fr)] gap-x-4 gap-y-3 lg:grid-cols-[58px_minmax(132px,1fr)_84px] lg:gap-x-4">
+          {renderCompactQuota(insight.hourlyQuota)}
+          {renderCompactQuota(insight.weeklyQuota)}
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
               Sync
@@ -174,7 +173,7 @@ const AccountCard: React.FC<AccountCardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-start gap-2 lg:justify-end">
           <button
             onClick={() => void onRefresh()}
             disabled={isQuotaRefreshing}
@@ -294,7 +293,7 @@ const AccountCard: React.FC<AccountCardProps> = ({
 
             <div className="mt-10">
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                5h 已用
+                5h 剩余
               </p>
               <div className="mt-3 flex items-end gap-3">
                 <p className="text-[4rem] font-black tracking-[-0.11em] text-white">

@@ -5,9 +5,9 @@ import { Account } from "../types";
 import AccountCard from "./AccountCard";
 import EmptyState from "./EmptyState";
 import {
-  formatRelativeTime,
   getAccountStatusReason,
   getAccountInsight,
+  getRemainingPercent,
   getRecommendedAccountId,
   isAccountInvalid,
 } from "../utils/dashboard";
@@ -18,7 +18,6 @@ interface AccountListProps {
   refreshingAccountIds: string[];
   onDelete: (id: string) => void;
   onRefreshAccount: (id: string) => Promise<void>;
-  onRefreshUsage: () => Promise<void>;
   onRename: (id: string, displayName: string) => Promise<void>;
   onSwitch: (account: Account) => void;
 }
@@ -28,7 +27,6 @@ const AccountList: React.FC<AccountListProps> = ({
   refreshingAccountIds,
   onDelete,
   onRefreshAccount,
-  onRefreshUsage,
   onRename,
   onSwitch,
 }) => {
@@ -55,7 +53,7 @@ const AccountList: React.FC<AccountListProps> = ({
   const recommendedStandby = sorted.find(
     (account) => account.id === recommendedId && account.id !== featuredAccount?.id,
   );
-  const featuredQuota = featuredAccount?.rateLimits?.primary?.usedPercent;
+  const featuredQuota = getRemainingPercent(featuredAccount?.rateLimits?.primary);
   const featuredIdentity =
     featuredAccount?.email ?? featuredAccount?.userId ?? "未识别身份";
   const featuredInsight = featuredAccount ? getAccountInsight(featuredAccount) : null;
@@ -74,249 +72,163 @@ const AccountList: React.FC<AccountListProps> = ({
         : "待命";
 
   return (
-    <section className="mx-auto w-full max-w-[1480px] space-y-4">
+    <section className="mx-auto w-full max-w-[1320px] space-y-2.5">
       {featuredAccount && (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_290px]">
+        <div className="grid items-stretch gap-2.5 xl:grid-cols-[minmax(0,1fr)_240px]">
           <motion.article
-            className="relative overflow-hidden rounded-[38px] bg-[linear-gradient(145deg,#13181f_0%,#1c252f_54%,#2a3642_100%)] px-6 py-6 text-white shadow-[0_40px_90px_-56px_rgba(15,23,42,0.88)] sm:px-7"
+            className="relative overflow-hidden rounded-[22px] bg-[linear-gradient(145deg,#13181f_0%,#1c252f_54%,#2a3642_100%)] px-4 py-4 text-white shadow-[0_24px_58px_-46px_rgba(15,23,42,0.82)]"
             {...revealUp(prefersReducedMotion, 0.04)}
           >
             <div className="pointer-events-none absolute inset-0">
-              <div className="absolute inset-x-0 top-0 h-36 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.14),transparent_66%)]" />
-              <div className="absolute -right-16 top-8 h-52 w-52 rounded-full bg-slate-200/10 blur-3xl" />
-              <div className="absolute -left-12 bottom-6 h-48 w-48 rounded-full bg-stone-200/8 blur-3xl" />
+              <div className="absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),transparent_70%)]" />
             </div>
 
-            <div className="relative flex flex-col gap-6">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            <div className="relative grid gap-3 lg:grid-cols-[minmax(230px,1.1fr)_180px_minmax(230px,0.9fr)_180px] lg:items-center">
+              <div className="flex min-w-0 flex-col justify-center">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-400">
                     Current
                   </span>
-                  <div className="mt-3 flex flex-wrap items-center gap-2.5">
-                    <h2 className="truncate text-[2.1rem] font-black tracking-[-0.07em] text-white sm:text-[2.5rem]">
-                      {featuredAccount.displayName}
-                    </h2>
-                    <span className="rounded-full border border-white/12 bg-white/10 px-3 py-1 text-[10px] font-semibold text-white/86">
-                      {featuredStatus}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-300">
-                    <span className="rounded-full border border-white/10 bg-white/8 px-2.5 py-1 text-[11px] font-medium text-white/86">
-                      {featuredInsight?.roleLabel ?? "账号"}
-                    </span>
-                    <span className="truncate">{featuredIdentity}</span>
-                  </div>
+                  <span className="rounded-full border border-white/12 bg-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-white/86">
+                    {featuredStatus}
+                  </span>
                 </div>
+                <h2 className="mt-1 truncate text-[1.35rem] font-black tracking-[-0.05em] text-white">
+                  {featuredAccount.displayName}
+                </h2>
+                <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-slate-300">
+                  <span className="shrink-0 rounded-full border border-white/10 bg-white/8 px-2 py-0.5 text-[10px] font-medium text-white/86">
+                    {featuredInsight?.roleLabel ?? "账号"}
+                  </span>
+                  <span className="truncate">{featuredIdentity}</span>
+                </div>
+                <button
+                  onClick={() => onDelete(featuredAccount.id)}
+                  className="mt-3 w-fit rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5 text-[11px] font-semibold text-white/50 transition-all hover:border-rose-200/35 hover:bg-rose-500/10 hover:text-rose-50"
+                >
+                  删除账号
+                </button>
+              </div>
 
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <button
-                    onClick={onRefreshUsage}
-                    disabled={isRefreshing}
-                    className="rounded-full border border-white/12 bg-white/8 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/12 disabled:opacity-60"
-                  >
-                    {isRefreshing ? "刷新中..." : "刷新全部用量"}
-                  </button>
-                  <button
-                    onClick={() => setAddModalOpen(true)}
-                    className="rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-[0_18px_36px_-26px_rgba(255,255,255,0.85)] transition-all hover:-translate-y-0.5"
-                  >
-                    添加账户
-                  </button>
+              <div className="min-h-[74px] rounded-[18px] border border-white/10 bg-white/[0.045] px-3.5 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  5h 剩余
+                </p>
+                <div className="mt-1 flex items-end gap-2">
+                  <p className="text-[2.1rem] font-black leading-none tracking-[-0.1em] text-white">
+                    {typeof featuredQuota === "number" ? `${Math.round(featuredQuota)}%` : "--"}
+                  </p>
+                  <span className="pb-0.5 text-xs font-semibold text-slate-300">
+                    {featuredInsight?.hourlyQuota.resetLabel
+                      ? `重置 ${featuredInsight.hourlyQuota.resetLabel}`
+                      : ""}
+                  </span>
                 </div>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
-                <div className="rounded-[32px] border border-white/10 bg-white/[0.045] px-6 py-6">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-400">
-                    5h 已用
+              <div className="grid grid-cols-2 gap-2">
+                <div className="min-h-[62px] rounded-[16px] border border-white/10 bg-white/[0.055] px-3 py-2.5">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    本周
                   </p>
-                  <div className="mt-5 flex items-end gap-3">
-                    <p className="text-[4.8rem] font-black tracking-[-0.14em] text-white">
-                      {typeof featuredQuota === "number" ? `${Math.round(featuredQuota)}%` : "--"}
-                    </p>
-                  </div>
-                  <p className="mt-3 text-sm text-slate-300">
-                    {featuredInsight?.hourlyQuota.detail ?? "等待同步"}
+                  <p className="mt-0.5 whitespace-nowrap text-xs font-bold text-white">
+                    {featuredInsight?.weeklyQuota.valueLabel ?? "--"}
                   </p>
-
-                  <div className="mt-8 flex items-center gap-3">
-                    <button
-                      onClick={() =>
-                        !featuredAccount.isActive &&
-                        !featuredInvalid &&
-                        !isSwitching &&
-                        onSwitch(featuredAccount)
-                      }
-                      disabled={featuredAccount.isActive || featuredInvalid || isSwitching}
-                      className={`flex-1 rounded-full px-4 py-3 text-sm font-semibold transition-all disabled:cursor-not-allowed ${
-                        featuredInvalid
-                          ? "border border-rose-200 bg-rose-50 text-rose-600"
-                          : featuredAccount.isActive
-                          ? "border border-white/12 bg-white/10 text-white"
-                          : "bg-white text-slate-950 shadow-[0_18px_32px_-24px_rgba(255,255,255,0.78)] disabled:bg-white/60"
-                      }`}
-                    >
-                      {featuredInvalid
-                        ? "账号失效"
-                        : featuredAccount.isActive
-                        ? "当前使用中"
-                        : isSwitchTarget
-                          ? "切换中..."
-                          : "切换到此账号"}
-                    </button>
-                    <button
-                      onClick={() => onDelete(featuredAccount.id)}
-                      className="rounded-full border border-white/12 bg-white/8 px-4 py-3 text-sm font-semibold text-white/80 transition-all hover:bg-white/12 hover:text-white"
-                    >
-                      删除
-                    </button>
-                  </div>
                 </div>
-
-                <div className="grid gap-3">
-                  <div className="rounded-[26px] border border-white/10 bg-white/[0.055] px-5 py-5">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                      下一位
-                    </p>
-                    <p className="mt-3 text-[1.45rem] font-black tracking-[-0.05em] text-white">
-                      {recommendedStandby?.displayName ?? "继续当前账号"}
-                    </p>
-                    <p className="mt-2 text-sm text-slate-300">
-                      {recommendedStandby ? "需要切换时，优先交给它。" : "当前账号仍然最合适。"}
-                    </p>
-                  </div>
-
-                  <div className="rounded-[26px] border border-white/10 bg-white/[0.055] px-5 py-5">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                          本周
-                        </p>
-                        <p className="mt-2 text-lg font-bold tracking-[-0.04em] text-white">
-                          {featuredInsight?.weeklyQuota.valueLabel ?? "--"}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                          待命
-                        </p>
-                        <p className="mt-2 text-lg font-bold tracking-[-0.04em] text-white">
-                          {standbyAccounts.length}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                          账户数
-                        </p>
-                        <p className="mt-2 text-lg font-bold tracking-[-0.04em] text-white">
-                          {sorted.length}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                          上次切换
-                        </p>
-                        <p className="mt-2 text-lg font-bold tracking-[-0.04em] text-white">
-                          {formatRelativeTime(featuredAccount.lastSwitchedAt)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between px-1 pt-1 text-xs text-slate-400">
-                    <span>
-                      {featuredInvalid
-                        ? `已失效 · ${getAccountStatusReason(featuredAccount) ?? "请重新登录该账号"}`
-                        : `最近更新 ${featuredInsight?.syncLabel ?? "--"}`}
-                    </span>
-                    <button
-                      onClick={() => void onRefreshAccount(featuredAccount.id)}
-                      disabled={refreshingAccountIds.includes(featuredAccount.id) || isRefreshing}
-                      className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/8 px-3 py-1.5 font-semibold text-white/80 transition-all hover:bg-white/12 disabled:opacity-60"
-                    >
-                      刷新
-                    </button>
-                  </div>
+                <div className="min-h-[62px] rounded-[16px] border border-white/10 bg-white/[0.055] px-3 py-2.5">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    更新
+                  </p>
+                  <p className="mt-0.5 truncate text-xs font-bold text-white">
+                    {featuredInsight?.syncLabel ?? "--"}
+                  </p>
                 </div>
               </div>
+
+              <div className="flex flex-col justify-center gap-2">
+                <button
+                  onClick={() => void onRefreshAccount(featuredAccount.id)}
+                  disabled={refreshingAccountIds.includes(featuredAccount.id) || isRefreshing}
+                  className="rounded-full bg-white px-4 py-2.5 text-sm font-black text-slate-950 shadow-[0_18px_34px_-24px_rgba(255,255,255,0.82)] transition-all hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-white/55 disabled:text-slate-500 disabled:shadow-none"
+                >
+                  {refreshingAccountIds.includes(featuredAccount.id) || isRefreshing
+                    ? "刷新中"
+                    : "刷新当前"}
+                </button>
+                {!featuredAccount.isActive && (
+                  <button
+                    onClick={() =>
+                      !featuredInvalid &&
+                      !isSwitching &&
+                      onSwitch(featuredAccount)
+                    }
+                    disabled={featuredInvalid || isSwitching}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all disabled:cursor-not-allowed ${
+                      featuredInvalid
+                        ? "border border-rose-200 bg-rose-50 text-rose-600"
+                        : "bg-white text-slate-950 shadow-[0_18px_32px_-24px_rgba(255,255,255,0.78)] disabled:bg-white/60"
+                    }`}
+                  >
+                    {featuredInvalid
+                      ? "账号失效"
+                      : isSwitchTarget
+                        ? "切换中..."
+                        : "切换到此账号"}
+                  </button>
+                )}
+              </div>
+
+              {featuredInvalid && (
+                <div className="rounded-[16px] border border-rose-200/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-50 lg:col-span-4">
+                  {getAccountStatusReason(featuredAccount) ?? "请重新登录该账号"}
+                </div>
+              )}
             </div>
           </motion.article>
 
           <motion.aside
-            className="apple-panel-muted flex flex-col rounded-[30px] p-5"
+            className="apple-panel-muted flex h-full flex-col rounded-[22px] p-3"
             {...revealUp(prefersReducedMotion, 0.08)}
             whileHover={hoverLift(prefersReducedMotion)}
           >
             <p className="section-kicker">Next</p>
-            <p className="mt-3 text-[1.5rem] font-black tracking-[-0.05em] text-slate-950">
+            <p className="mt-1 truncate text-[1.15rem] font-black tracking-[-0.05em] text-slate-950">
               {recommendedStandby?.displayName ?? "继续当前账号"}
             </p>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              {recommendedStandby ? "需要切换时，优先交给它。" : "当前账号仍然最合适。"}
+            <p className="mt-0.5 truncate text-[11px] text-slate-500">
+              {recommendedStandby ? "需要切换时优先交给它" : "当前账号仍然最合适"}
             </p>
 
-            <div className="apple-divider my-5 border-t" />
+            <div className="apple-divider my-2.5 border-t" />
 
-            <div className="space-y-4">
+            <div>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-                  当前识别
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  5h 剩余
                 </p>
-                <p className="mt-2 text-sm font-semibold text-slate-900">{featuredIdentity}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-                    5h 已用
-                  </p>
-                  <p className="mt-2 text-xl font-bold tracking-[-0.04em] text-slate-950">
-                    {typeof featuredQuota === "number" ? `${Math.round(featuredQuota)}%` : "--"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-                    待命
-                  </p>
-                  <p className="mt-2 text-xl font-bold tracking-[-0.04em] text-slate-950">
-                    {standbyAccounts.length}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-                    账户数
-                  </p>
-                  <p className="mt-2 text-xl font-bold tracking-[-0.04em] text-slate-950">
-                    {sorted.length}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
-                    上次切换
-                  </p>
-                  <p className="mt-2 text-xl font-bold tracking-[-0.04em] text-slate-950">
-                    {featuredAccount.lastSwitchedAt
-                      ? formatRelativeTime(featuredAccount.lastSwitchedAt)
-                      : "--"}
-                  </p>
-                </div>
+                <p className="mt-0.5 text-sm font-bold tracking-[-0.04em] text-slate-950">
+                  {typeof featuredQuota === "number" ? `${Math.round(featuredQuota)}%` : "--"}
+                </p>
+                <p className="mt-0.5 text-xs font-medium text-slate-500">
+                  {featuredInsight?.hourlyQuota.resetLabel
+                    ? `重置 ${featuredInsight.hourlyQuota.resetLabel}`
+                    : "--"}
+                </p>
               </div>
             </div>
 
-            <div className="mt-auto pt-6">
-              <button
-                onClick={() => setAddModalOpen(true)}
-                className="primary-action w-full rounded-full px-4 py-3 text-sm font-semibold text-white"
-              >
-                添加账户
-              </button>
-            </div>
+            <button
+              onClick={() => setAddModalOpen(true)}
+              className="primary-action mt-auto w-full rounded-full px-3 py-1.5 text-xs font-semibold text-white"
+            >
+              添加账户
+            </button>
           </motion.aside>
         </div>
       )}
 
       <motion.section
-        className="apple-panel-muted rounded-[30px] p-4 sm:p-4.5"
+        className="apple-panel-muted rounded-[26px] p-3.5 sm:p-4"
         {...revealUp(prefersReducedMotion, 0.14)}
       >
         <div className="flex items-center justify-between gap-3 border-b border-slate-200/70 pb-3">

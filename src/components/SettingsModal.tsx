@@ -13,6 +13,7 @@ const SettingsModal: React.FC = () => {
   const { setSettingsOpen, settings, platformCapabilities, settingsSaveState, updateSettings } =
     useAccountStore();
   const canAutoRestartCodex = platformCapabilities?.supportsAutoRestartCodexDesktop ?? false;
+  const canAutoRestartVscode = platformCapabilities?.supportsAutoRestartVscode ?? false;
 
   const saveStateLabel =
     settingsSaveState === "saving"
@@ -76,43 +77,82 @@ const SettingsModal: React.FC = () => {
             </div>
 
             <div className="apple-panel-muted rounded-[28px] p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700">
-                  切换后自动重启 Codex
-                </label>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                disabled={!canAutoRestartCodex}
-                aria-checked={settings.autoRestartCodexAfterSwitch}
-                onClick={() =>
-                  updateSettings({
-                    autoRestartCodexAfterSwitch: !settings.autoRestartCodexAfterSwitch,
-                  })
-                }
-                className={`liquid-toggle relative mt-1 inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-all ${
-                  !canAutoRestartCodex
-                    ? "bg-slate-200"
-                    : settings.autoRestartCodexAfterSwitch
-                      ? "bg-[linear-gradient(135deg,#07111f,#2563eb)]"
-                      : "bg-slate-300"
-                }`}
-              >
-                <span
-                  className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-[0_10px_20px_-12px_rgba(15,23,42,0.55)] transition-transform ${
-                    settings.autoRestartCodexAfterSwitch ? "translate-x-7" : "translate-x-1"
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    切换后自动重启 Codex
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  disabled={!canAutoRestartCodex}
+                  aria-checked={settings.autoRestartCodexAfterSwitch}
+                  onClick={() =>
+                    updateSettings({
+                      autoRestartCodexAfterSwitch: !settings.autoRestartCodexAfterSwitch,
+                    })
+                  }
+                  className={`liquid-toggle relative mt-1 inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-all ${
+                    !canAutoRestartCodex
+                      ? "bg-slate-200"
+                      : settings.autoRestartCodexAfterSwitch
+                        ? "bg-[linear-gradient(135deg,#07111f,#2563eb)]"
+                        : "bg-slate-300"
                   }`}
-                />
-              </button>
+                >
+                  <span
+                    className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-[0_10px_20px_-12px_rgba(15,23,42,0.55)] transition-transform ${
+                      settings.autoRestartCodexAfterSwitch ? "translate-x-7" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+              {!canAutoRestartCodex && (
+                <p className="mt-3 text-xs leading-6 text-amber-600">
+                  当前平台暂不支持自动重启。
+                </p>
+              )}
             </div>
-            {!canAutoRestartCodex && (
-              <p className="mt-3 text-xs leading-6 text-amber-600">
-                当前平台暂不支持自动重启。
-              </p>
-            )}
-          </div>
+
+            <div className="apple-panel-muted rounded-[28px] p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">
+                    切换后自动重启 VSCode
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  disabled={!canAutoRestartVscode}
+                  aria-checked={settings.autoRestartVscodeAfterSwitch}
+                  onClick={() =>
+                    updateSettings({
+                      autoRestartVscodeAfterSwitch: !settings.autoRestartVscodeAfterSwitch,
+                    })
+                  }
+                  className={`liquid-toggle relative mt-1 inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-all ${
+                    !canAutoRestartVscode
+                      ? "bg-slate-200"
+                      : settings.autoRestartVscodeAfterSwitch
+                        ? "bg-[linear-gradient(135deg,#07111f,#2563eb)]"
+                        : "bg-slate-300"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-[0_10px_20px_-12px_rgba(15,23,42,0.55)] transition-transform ${
+                      settings.autoRestartVscodeAfterSwitch ? "translate-x-7" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+              {!canAutoRestartVscode && (
+                <p className="mt-3 text-xs leading-6 text-amber-600">
+                  当前平台暂不支持自动重启 VSCode。
+                </p>
+              )}
+            </div>
 
             <div className="apple-panel-muted rounded-[28px] p-5">
               <label className="section-kicker tracking-[0.28em] text-slate-500">

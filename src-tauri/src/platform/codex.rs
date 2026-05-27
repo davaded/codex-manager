@@ -1,10 +1,11 @@
 use std::{
     env,
     path::{Path, PathBuf},
+    process::Command,
 };
 
-#[cfg(target_os = "windows")]
-use std::process::Command;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::{thread, time::Duration};
 
 use crate::models::DesktopPlatformCapabilities;
 
@@ -36,6 +37,11 @@ pub fn desktop_platform_capabilities() -> DesktopPlatformCapabilities {
     DesktopPlatformCapabilities {
         platform: current_platform().to_string(),
         supports_auto_restart_codex_desktop: cfg!(target_os = "windows"),
+        supports_auto_restart_vscode: cfg!(any(
+            target_os = "windows",
+            target_os = "macos",
+            target_os = "linux"
+        )),
         supports_resume_session_in_terminal: cfg!(target_os = "windows"),
         supports_system_tray: true,
         supports_taskbar_shortcuts: cfg!(target_os = "windows"),
@@ -174,6 +180,121 @@ Start-Process -FilePath '{codex_path}'"#,
 #[cfg(not(target_os = "windows"))]
 pub fn restart_codex_desktop() -> Result<(), String> {
     Err("当前仅支持 Windows 自动重启 Codex 桌面应用".to_string())
+}
+
+#[cfg(target_os = "windows")]
+pub fn restart_vscode() -> Result<(), String> {
+    let restart_script = r#"$ErrorActionPreference = 'Stop'
+$candidates = @(
+  "$env:LOCALAPPDATA\Programs\Microsoft VS Code\Code.exe",
+  "$env:ProgramFiles\Microsoft VS Code\Code.exe",
+  "${env:ProgramFiles(x86)}\Microsoft VS Code\Code.exe"
+)
+$code = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $code) {
+  $command = Get-Command code -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($command) {
+    $code = $command.Source
+  }
+}
+if (-not $code) {
+  throw '未找到 VSCode 可执行文件'
+}
+$targets = Get-Process -Name 'Code' -ErrorAction SilentlyContinue
+if ($targets) {
+  $targets | Stop-Process -Force
+}
+Start-Sleep -Milliseconds 900
+Start-Process -FilePath $code"#;
+
+    let output = Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            restart_script,
+        ])
+        .output()
+        .map_err(|e| format!("重启 VSCode 失败: {e}"))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() { stderr } else { stdout };
+
+    if detail.is_empty() {
+        Err("重启 VSCode 失败".to_string())
+    } else {
+        Err(format!("重启 VSCode 失败: {detail}"))
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn restart_vscode() -> Result<(), String> {
+    let _ = Command::new("osascript")
+        .args(["-e", r#"tell application "Visual Studio Code" to quit"#])
+        .output();
+
+    thread::sleep(Duration::from_millis(900));
+
+    let output = Command::new("open")
+        .args(["-a", "Visual Studio Code"])
+        .output()
+        .map_err(|e| format!("重启 VSCode 失败: {e}"))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() { stderr } else { stdout };
+
+    if detail.is_empty() {
+        Err("重启 VSCode 失败".to_string())
+    } else {
+        Err(format!("重启 VSCode 失败: {detail}"))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn resolve_vscode_cli_executable() -> Result<PathBuf, String> {
+    if let Some(path_var) = env::var_os("PATH") {
+        for path in env::split_paths(&path_var) {
+            for name in ["code", "code-insiders"] {
+                let candidate = path.join(name);
+                if path_has_file(&candidate) {
+                    return Ok(candidate);
+                }
+            }
+        }
+    }
+
+    Err("未找到 VSCode 可执行文件".to_string())
+}
+
+#[cfg(target_os = "linux")]
+pub fn restart_vscode() -> Result<(), String> {
+    let code_path = resolve_vscode_cli_executable()?;
+    let _ = Command::new("pkill").args(["-x", "code"]).output();
+    let _ = Command::new("pkill").args(["-x", "code-insiders"]).output();
+
+    thread::sleep(Duration::from_millis(900));
+
+    Command::new(code_path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("重启 VSCode 失败: {e}"))
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+pub fn restart_vscode() -> Result<(), String> {
+    Err("当前平台暂不支持自动重启 VSCode".to_string())
 }
 
 #[cfg(target_os = "windows")]

@@ -85,6 +85,8 @@ pub struct AppSettings {
     pub auto_refresh_interval: u32,
     #[serde(default = "default_auto_restart_codex_after_switch")]
     pub auto_restart_codex_after_switch: bool,
+    #[serde(default)]
+    pub auto_restart_vscode_after_switch: bool,
     pub theme: String,
     pub proxy_url: String,
 }
@@ -98,6 +100,7 @@ fn default_auto_restart_codex_after_switch() -> bool {
 pub struct DesktopPlatformCapabilities {
     pub platform: String,
     pub supports_auto_restart_codex_desktop: bool,
+    pub supports_auto_restart_vscode: bool,
     pub supports_resume_session_in_terminal: bool,
     pub supports_system_tray: bool,
     pub supports_taskbar_shortcuts: bool,
@@ -116,7 +119,9 @@ pub struct CreditsSnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RateLimitWindow {
-    pub used_percent: i32,
+    pub remaining_percent: i32,
+    #[serde(default)]
+    pub used_percent: Option<f64>,
     pub resets_at: Option<i64>,
     pub window_duration_mins: Option<i64>,
 }
@@ -182,6 +187,82 @@ pub struct UsageStatsSummary {
     pub total_tokens: TokenUsageInfo,
     pub latest_total_tokens: Option<TokenUsageInfo>,
     pub models: Vec<ModelUsageSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyWorkspaceUsageTotals {
+    #[serde(default)]
+    pub credits: Option<f64>,
+    #[serde(default)]
+    pub turns: Option<u64>,
+    #[serde(default)]
+    #[serde(alias = "text_total_tokens")]
+    pub text_total_tokens: Option<u64>,
+    #[serde(default)]
+    #[serde(alias = "cached_text_input_tokens")]
+    pub cached_text_input_tokens: Option<u64>,
+    #[serde(default)]
+    #[serde(alias = "uncached_text_input_tokens")]
+    pub uncached_text_input_tokens: Option<u64>,
+    #[serde(default)]
+    #[serde(alias = "text_output_tokens")]
+    pub text_output_tokens: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyWorkspaceUsageBreakdown {
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    #[serde(alias = "client_id")]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub users: Option<u64>,
+    #[serde(default)]
+    pub threads: Option<u64>,
+    #[serde(default)]
+    pub turns: Option<u64>,
+    #[serde(default)]
+    pub credits: Option<f64>,
+    #[serde(default)]
+    pub on_demand_credits: Option<f64>,
+    #[serde(default)]
+    #[serde(alias = "text_total_tokens")]
+    pub text_total_tokens: Option<u64>,
+    #[serde(default)]
+    #[serde(alias = "cached_text_input_tokens")]
+    pub cached_text_input_tokens: Option<u64>,
+    #[serde(default)]
+    #[serde(alias = "uncached_text_input_tokens")]
+    pub uncached_text_input_tokens: Option<u64>,
+    #[serde(default)]
+    #[serde(alias = "text_output_tokens")]
+    pub text_output_tokens: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyWorkspaceUsage {
+    pub date: String,
+    #[serde(default)]
+    pub totals: Option<DailyWorkspaceUsageTotals>,
+    #[serde(default)]
+    pub models: Option<Vec<DailyWorkspaceUsageBreakdown>>,
+    #[serde(default)]
+    pub clients: Option<Vec<DailyWorkspaceUsageBreakdown>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyWorkspaceUsageResponse {
+    #[serde(default)]
+    pub data: Vec<DailyWorkspaceUsage>,
+    #[serde(default)]
+    pub start_date: String,
+    #[serde(default)]
+    pub end_date: String,
 }
 
 // ─── File-format structs (snake_case, matches on-disk JSON) ──────────────────

@@ -3,6 +3,7 @@
     "beforeBundleCommand": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/build-windows-cli.ps1"
   },
   "bundle": {
+    "targets": ["nsis"],
     "windows": {
       "nsis": {
         "installerHooks": "windows/installer-hooks.nsh"

@@ -48,13 +48,13 @@ Codex Manager 把这些操作收敛成桌面窗口、托盘面板和命令行里
 
 ## 安装
 
-推荐直接从 GitHub Releases 下载打包产物：
+推荐直接从 GitHub Releases 下载 Windows 打包产物：
 
-- Windows：`.msi` 或 `.exe`
-- macOS：`.dmg`
-- Linux：`.deb`、`.rpm` 或 `.AppImage`
+- Windows：`codex-manager_<版本号>_x64-setup.exe`
 
 下载地址：<https://github.com/davaded/codex-manager/releases>
+
+macOS 安装包请在本机执行 `npm run tauri:build:macos` 构建，产物位于 `src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/`。
 
 ### 安装后 CLI 可用性
 
@@ -62,16 +62,13 @@ Codex Manager 把这些操作收敛成桌面窗口、托盘面板和命令行里
 
 | 平台 | 推荐安装包 | CLI 可用性 |
 | --- | --- | --- |
-| Windows | `.exe` 或 `.msi` | 自动加入 `PATH` |
-| macOS | `.dmg` | 需要额外执行一次 helper 脚本 |
-| Linux | `.deb` 或 `.rpm` | 安装后可直接使用 `codex-manager` |
-| Linux | `.AppImage` | 需要额外执行一次 helper 脚本，或保持便携运行 |
+| Windows | `codex-manager_<版本号>_x64-setup.exe` | 自动加入 `PATH` |
+| macOS | 本地构建的 `codex-manager_<版本号>_aarch64.dmg` | 可使用仓库脚本加入 `PATH` |
 
 说明：
 
 - Windows 安装后请重新打开一个终端窗口，让新的 `PATH` 生效。
-- macOS 版本只提供 `.dmg`。如果还希望在 Terminal 里直接使用 `codex-manager`，把应用拖到 `/Applications` 后再执行一次 helper 脚本即可。
-- Linux 如果希望获得最稳定的系统级 CLI 体验，优先使用 `.deb` 或 `.rpm`。
+- macOS 本地 DMG 构建完成后，如果还希望在 Terminal 里直接使用 `codex-manager`，把应用拖到 `/Applications` 后再执行仓库里的 `scripts/install-unix-cli.sh`。
 - 应用会读写 `~/.codex/auth.json`，所以机器上需要先能正常使用 Codex CLI。
 
 ## 命令行切换
@@ -89,7 +86,7 @@ CLI 会同时更新受管账号状态和当前生效的 `~/.codex/auth.json`。
 
 如果 Codex CLI 或桌面应用已经在运行，切换后请重启它们，让新的 auth 生效。
 
-对于 `.dmg` 和 `.AppImage` 安装方式，可以使用发布包里的 helper 脚本暴露全局命令：
+对于 `.dmg` 安装方式，可以使用仓库里的 helper 脚本暴露全局命令：
 
 ```bash
 sudo bash ./install-unix-cli.sh /Applications/codex-manager.app /usr/local/bin/codex-manager
@@ -141,9 +138,9 @@ npm link
 
 当前规则：
 
-- 优先选择 `5h` 使用比例更低的账号
-- 如果 `5h` 相同，再比较每周使用比例
-- 如果当前账号已经是最佳选择，则不重复切换
+- 当前账号 `5h` 剩余小于 5%，或每周剩余小于 2% 时触发切换
+- 候选账号必须拥有有效额度数据
+- 候选账号按 `5h` 剩余优先、每周剩余次之排序
 
 ## Token 统计
 
@@ -216,25 +213,16 @@ npm link
 npm install
 ```
 
-启动 Tauri 开发环境：
+命令说明：
 
-```bash
-npm run tauri dev
-```
-
-只跑前端：
-
-```bash
-npm run dev
-```
-
-构建检查：
-
-```bash
-npm run build
-cd src-tauri
-cargo check
-```
+- `npm run tauri dev`：启动完整开发环境，包含 Vite 和 Tauri 桌面端。
+- `npm run dev`：仅启动 Vite Web 前端。
+- `npm run test`：运行 Vitest。
+- `npm run build`：执行 TypeScript 检查并构建前端产物。
+- `npm run tauri:build:windows`：生成 Windows NSIS 安装包。
+- `npm run tauri:build:macos`：生成 macOS DMG 安装包。
+- `npm run preview`：预览前端构建产物。
+- `npm run cli`：运行本地 CLI 入口。
 
 ## 路线图
 

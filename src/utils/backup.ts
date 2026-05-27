@@ -1,6 +1,7 @@
 import { Account, AppSettings, BackupBundle, BackupBundleAccount } from "../types";
 import { api } from "./invoke";
 import { hydrateAccounts } from "./accounts";
+import { matchesAccountIdentity, parseAuthIdentity } from "./auth";
 
 interface NormalizedBackupImport {
   accounts: Account[];
@@ -31,6 +32,10 @@ function normalizeBackupSettings(settings: Partial<AppSettings>): AppSettings {
       typeof settings.autoRestartCodexAfterSwitch === "boolean"
         ? settings.autoRestartCodexAfterSwitch
         : true,
+    autoRestartVscodeAfterSwitch:
+      typeof settings.autoRestartVscodeAfterSwitch === "boolean"
+        ? settings.autoRestartVscodeAfterSwitch
+        : false,
     theme:
       settings.theme === "light" ||
       settings.theme === "dark" ||
@@ -61,6 +66,74 @@ function normalizeBackupImport(parsed: BackupBundle): NormalizedBackupImport {
   };
 }
 
+function isPresentCredential(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function matchesCurrentAuth(account: Account, authJson: string): boolean {
+  const identity = parseAuthIdentity(authJson);
+  const accountUserId = account.userId?.trim().toLowerCase() ?? null;
+  const identityAccountId = identity.accountId?.trim().toLowerCase() ?? null;
+
+  return (
+    matchesAccountIdentity(account, identity) ||
+    Boolean(accountUserId && identityAccountId && accountUserId === identityAccountId)
+  );
+}
+
+function resolveBackupCredentials(
+  account: Account,
+  credentials: string | null | undefined,
+  currentAuthJson: string | null | undefined,
+): string | null {
+  if (isPresentCredential(credentials)) {
+    return credentials;
+  }
+
+  if (
+    account.isActive &&
+    isPresentCredential(currentAuthJson) &&
+    matchesCurrentAuth(account, currentAuthJson)
+  ) {
+    return currentAuthJson;
+  }
+
+  return null;
+}
+
+function formatAccountList(accounts: Account[]): string {
+  return accounts.map((account) => account.displayName || account.id).join("、");
+}
+
+export function collectBackupCredentialsForImport(parsed: BackupBundle): Map<string, string> {
+  const credentialsByAccountId = new Map<string, string>();
+  const missingAccounts: Account[] = [];
+
+  for (const entry of parsed.accounts) {
+    const account = entry.account;
+    const resolved = resolveBackupCredentials(
+      account,
+      entry.credentials,
+      parsed.currentAuthJson,
+    );
+
+    if (!resolved) {
+      missingAccounts.push(account);
+      continue;
+    }
+
+    credentialsByAccountId.set(account.id, resolved);
+  }
+
+  if (missingAccounts.length > 0) {
+    throw new Error(
+      `备份缺少账号凭据：${formatAccountList(missingAccounts)}。请在源电脑重新导出完整备份。`,
+    );
+  }
+
+  return credentialsByAccountId;
+}
+
 function downloadJson(content: string, fileName: string) {
   const blob = new Blob([content], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -75,18 +148,32 @@ export async function exportBackupBundle(
   accounts: Account[],
   settings: AppSettings,
 ): Promise<void> {
+  const currentAuthJson = await api.readAuthJson().catch(() => null);
   const exportedAccounts: BackupBundleAccount[] = await Promise.all(
     accounts.map(async (account) => ({
       account,
-      credentials: await api.readAccountCredentials(account.id).catch(() => null),
+      credentials: resolveBackupCredentials(
+        account,
+        await api.readAccountCredentials(account.id).catch(() => null),
+        currentAuthJson,
+      ),
     })),
   );
+  const missingAccounts = exportedAccounts
+    .filter((entry) => !entry.credentials)
+    .map((entry) => entry.account);
+
+  if (missingAccounts.length > 0) {
+    throw new Error(
+      `无法导出完整备份，缺少账号凭据：${formatAccountList(missingAccounts)}。请先重新导入这些账号的当前授权。`,
+    );
+  }
 
   const bundle: BackupBundle = {
     version: "1.0",
     exportedAt: new Date().toISOString(),
     settings,
-    currentAuthJson: await api.readAuthJson().catch(() => null),
+    currentAuthJson,
     accounts: exportedAccounts,
   };
 
@@ -109,14 +196,8 @@ export async function importBackupBundle(
     (account) => !nextAccounts.some((item) => item.id === account.id),
   );
   const previousCredentials = new Map<string, string | null>();
-  const accountIdsToWrite = new Set(
-    parsed.accounts
-      .filter(
-        (entry): entry is BackupBundleAccount & { account: Account } =>
-          Boolean(entry.account?.id),
-      )
-      .map((entry) => entry.account.id),
-  );
+  const credentialsByAccountId = collectBackupCredentialsForImport(parsed);
+  const accountIdsToWrite = new Set(credentialsByAccountId.keys());
   const shouldReplaceCurrentAuth =
     Boolean(parsed.currentAuthJson) && nextAccounts.some((account) => account.isActive);
   const previousAuthJson = shouldReplaceCurrentAuth
@@ -130,11 +211,8 @@ export async function importBackupBundle(
       previousCredentials.set(accountId, existingCredentials);
     }
 
-    for (const { account, credentials } of parsed.accounts) {
-      if (!credentials) {
-        continue;
-      }
-      await api.saveAccountCredentials(account.id, credentials);
+    for (const [accountId, credentials] of credentialsByAccountId) {
+      await api.saveAccountCredentials(accountId, credentials);
     }
 
     if (shouldReplaceCurrentAuth) {

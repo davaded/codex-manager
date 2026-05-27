@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   AppSettings,
   AccountsStore,
+  DailyWorkspaceUsageResponse,
   DesktopPlatformCapabilities,
   GetAccountRateLimitsResponse,
   OAuthResult,
@@ -43,8 +44,8 @@ const demoAccounts: AccountsStore = {
       rateLimits: {
         limitId: "codex",
         planType: "plus",
-        primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: 1773813607 },
-        secondary: { usedPercent: 88, windowDurationMins: 10080, resetsAt: 1773878873 },
+        primary: { remainingPercent: 100, windowDurationMins: 300, resetsAt: 1773813607 },
+        secondary: { remainingPercent: 88, windowDurationMins: 10080, resetsAt: 1773878873 },
       },
     },
     {
@@ -66,8 +67,8 @@ const demoAccounts: AccountsStore = {
       rateLimits: {
         limitId: "codex",
         planType: "plus",
-        primary: { usedPercent: 19, windowDurationMins: 300, resetsAt: 1773806407 },
-        secondary: { usedPercent: 29, windowDurationMins: 10080, resetsAt: 1774144400 },
+        primary: { remainingPercent: 19, windowDurationMins: 300, resetsAt: 1773806407 },
+        secondary: { remainingPercent: 29, windowDurationMins: 10080, resetsAt: 1774144400 },
       },
     },
     {
@@ -89,8 +90,8 @@ const demoAccounts: AccountsStore = {
       rateLimits: {
         limitId: "codex",
         planType: "plus",
-        primary: { usedPercent: 98, windowDurationMins: 300, resetsAt: 1773801007 },
-        secondary: { usedPercent: 96, windowDurationMins: 10080, resetsAt: 1773965273 },
+        primary: { remainingPercent: 98, windowDurationMins: 300, resetsAt: 1773801007 },
+        secondary: { remainingPercent: 96, windowDurationMins: 10080, resetsAt: 1773965273 },
       },
     },
   ],
@@ -105,6 +106,7 @@ const demoCredentials: Record<string, string> = {
 const demoSettings: AppSettings = {
   autoRefreshInterval: 0,
   autoRestartCodexAfterSwitch: true,
+  autoRestartVscodeAfterSwitch: false,
   theme: "system",
   proxyUrl: "",
 };
@@ -112,6 +114,7 @@ const demoSettings: AppSettings = {
 const mockPlatformCapabilities: DesktopPlatformCapabilities = {
   platform: "browser",
   supportsAutoRestartCodexDesktop: false,
+  supportsAutoRestartVscode: false,
   supportsResumeSessionInTerminal: false,
   supportsSystemTray: false,
   supportsTaskbarShortcuts: false,
@@ -140,6 +143,55 @@ const mockUsageStatsSummary: UsageStatsSummary = {
     { model: "gpt-5-codex", sessions: 11, totalTokens: 138_220 },
     { model: "gpt-5.2", sessions: 5, totalTokens: 58_940 },
     { model: "gpt-4.1", sessions: 2, totalTokens: 17_800 },
+  ],
+};
+
+const mockDailyWorkspaceUsage: DailyWorkspaceUsageResponse = {
+  startDate: "2026-02-17",
+  endDate: "2026-03-19",
+  data: [
+    {
+      date: "2026-03-10",
+      totals: {
+        credits: 5.42,
+        turns: 18,
+        textTotalTokens: 1_820_000,
+      },
+    },
+    {
+      date: "2026-03-11",
+      totals: {
+        credits: 8.16,
+        turns: 27,
+        cachedTextInputTokens: 450_000,
+        uncachedTextInputTokens: 980_000,
+        textOutputTokens: 320_000,
+      },
+    },
+    {
+      date: "2026-03-13",
+      totals: {
+        credits: 12.74,
+        turns: 34,
+        textTotalTokens: 3_410_000,
+      },
+    },
+    {
+      date: "2026-03-15",
+      totals: {
+        credits: 6.08,
+        turns: 21,
+        textTotalTokens: 1_990_000,
+      },
+    },
+    {
+      date: "2026-03-17",
+      totals: {
+        credits: 3.95,
+        turns: 13,
+        textTotalTokens: 960_000,
+      },
+    },
   ],
 };
 
@@ -396,6 +448,12 @@ const browserApi = {
   async readUsageStatsSummary(): Promise<UsageStatsSummary> {
     return mockUsageStatsSummary;
   },
+  async readAccountDailyWorkspaceUsage(
+    _accountId: string,
+    _days = 30,
+  ): Promise<DailyWorkspaceUsageResponse> {
+    return mockDailyWorkspaceUsage;
+  },
   async deleteAccountSessions(accountId: string): Promise<void> {
     const store = readMockAccounts();
     writeMockAccounts({
@@ -409,6 +467,9 @@ const browserApi = {
     return;
   },
   async restartCodexDesktop(): Promise<void> {
+    return;
+  },
+  async restartVscode(): Promise<void> {
     return;
   },
   async startOauthFlow(): Promise<OAuthResult> {
@@ -464,11 +525,17 @@ export const api = isTauriRuntime
         invoke<GetAccountRateLimitsResponse>("read_account_rate_limits", { accountId }),
       getCurrentSessionsInfo: () => invoke<SessionInfo>("get_current_sessions_info"),
       readUsageStatsSummary: () => invoke<UsageStatsSummary>("read_usage_stats_summary"),
+      readAccountDailyWorkspaceUsage: (accountId: string, days = 30) =>
+        invoke<DailyWorkspaceUsageResponse>("read_account_daily_workspace_usage", {
+          accountId,
+          days,
+        }),
       deleteAccountSessions: (accountId: string) =>
         invoke<void>("delete_account_sessions", { accountId }),
       resumeSessionInTerminal: (sessionId: string) =>
         invoke<void>("resume_session_in_terminal", { sessionId }),
       restartCodexDesktop: () => invoke<void>("restart_codex_desktop"),
+      restartVscode: () => invoke<void>("restart_vscode"),
 
       // oauth
       startOauthFlow: () => invoke<OAuthResult>("start_oauth_flow"),

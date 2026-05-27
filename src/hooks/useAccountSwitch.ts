@@ -14,6 +14,9 @@ export const useAccountSwitch = () => {
     const canAutoRestartCodex =
       settings.autoRestartCodexAfterSwitch &&
       platformCapabilities?.supportsAutoRestartCodexDesktop === true;
+    const canAutoRestartVscode =
+      settings.autoRestartVscodeAfterSwitch &&
+      platformCapabilities?.supportsAutoRestartVscode === true;
 
     setSwitchState({
       phase: "preparing",
@@ -115,21 +118,38 @@ export const useAccountSwitch = () => {
         }
       }
 
+      let vscodeRestartErrorMessage: string | null = null;
+      if (canAutoRestartVscode) {
+        try {
+          await api.restartVscode();
+        } catch (restartError: unknown) {
+          vscodeRestartErrorMessage =
+            restartError instanceof Error ? restartError.message : String(restartError);
+        }
+      }
+
       const issues = [
         persistErrorMessage
           ? `保存失败 · ${persistErrorMessage}`
           : null,
         restartErrorMessage
-          ? `重启失败 · ${restartErrorMessage}`
+          ? `Codex 重启失败 · ${restartErrorMessage}`
+          : null,
+        vscodeRestartErrorMessage
+          ? `VSCode 重启失败 · ${vscodeRestartErrorMessage}`
           : null,
       ].filter((issue): issue is string => Boolean(issue));
+      const restartedTargets = [
+        canAutoRestartCodex ? "Codex" : null,
+        canAutoRestartVscode ? "VSCode" : null,
+      ].filter((target): target is string => Boolean(target));
 
       if (issues.length > 0) {
         showToast(`已切换到 ${toAccount.displayName} · ${issues.join("；")}`);
-      } else if (canAutoRestartCodex) {
-        showToast(`已切换到 ${toAccount.displayName}`);
+      } else if (restartedTargets.length > 0) {
+        showToast(`已切换到 ${toAccount.displayName} · 已重启 ${restartedTargets.join("、")}`);
       } else {
-        showToast(`已切换到 ${toAccount.displayName} · 请重新打开 Codex`);
+        showToast(`已切换到 ${toAccount.displayName} · 请重新打开 Codex/VSCode`);
       }
 
       setTimeout(

@@ -2,6 +2,7 @@ pub mod atomic_io;
 pub mod cli;
 pub mod commands;
 pub mod models;
+pub mod net;
 pub mod platform;
 
 use commands::{accounts, desktop, oauth, paths, sessions, usage};
@@ -500,8 +501,10 @@ pub fn run() {
             sessions::delete_account_sessions,
             desktop::resume_session_in_terminal,
             desktop::restart_codex_desktop,
+            desktop::restart_vscode,
             desktop::get_platform_capabilities,
             usage::read_account_rate_limits,
+            usage::read_account_daily_workspace_usage,
             // oauth
             oauth::start_oauth_flow,
             oauth::cancel_oauth_flow,

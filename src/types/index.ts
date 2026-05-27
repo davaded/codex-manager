@@ -80,6 +80,7 @@ export interface OAuthResult {
 export interface AppSettings {
   autoRefreshInterval: number; // minutes, 0 = disabled
   autoRestartCodexAfterSwitch: boolean;
+  autoRestartVscodeAfterSwitch: boolean;
   theme: 'light' | 'dark' | 'system';
   proxyUrl: string;
 }
@@ -87,6 +88,7 @@ export interface AppSettings {
 export interface DesktopPlatformCapabilities {
   platform: string;
   supportsAutoRestartCodexDesktop: boolean;
+  supportsAutoRestartVscode: boolean;
   supportsResumeSessionInTerminal: boolean;
   supportsSystemTray: boolean;
   supportsTaskbarShortcuts: boolean;
@@ -122,6 +124,35 @@ export interface UsageStatsSummary {
   models: ModelUsageSummary[];
 }
 
+export interface DailyWorkspaceUsageTotals {
+  credits?: number | null;
+  turns?: number | null;
+  textTotalTokens?: number | null;
+  cachedTextInputTokens?: number | null;
+  uncachedTextInputTokens?: number | null;
+  textOutputTokens?: number | null;
+}
+
+export interface DailyWorkspaceUsageBreakdown extends DailyWorkspaceUsageTotals {
+  model?: string | null;
+  clientId?: string | null;
+  users?: number | null;
+  threads?: number | null;
+}
+
+export interface DailyWorkspaceUsage {
+  date: string;
+  totals?: DailyWorkspaceUsageTotals | null;
+  models?: DailyWorkspaceUsageBreakdown[] | null;
+  clients?: DailyWorkspaceUsageBreakdown[] | null;
+}
+
+export interface DailyWorkspaceUsageResponse {
+  data: DailyWorkspaceUsage[];
+  startDate: string;
+  endDate: string;
+}
+
 export interface CreditsSnapshot {
   hasCredits?: boolean | null;
   unlimited?: boolean | null;
@@ -129,7 +160,8 @@ export interface CreditsSnapshot {
 }
 
 export interface RateLimitWindow {
-  usedPercent: number;
+  remainingPercent: number;
+  usedPercent?: number | null;
   resetsAt?: number | null;
   windowDurationMins?: number | null;
 }

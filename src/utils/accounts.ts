@@ -13,6 +13,11 @@ export interface CurrentAuthState {
   preserveStoredActive: boolean;
 }
 
+interface HydrateAccountsOptions {
+  refreshAllRateLimits?: boolean;
+  refreshRateLimitAccountIds?: ReadonlySet<string>;
+}
+
 export async function resolveCurrentAuthState(accounts: Account[]): Promise<CurrentAuthState> {
   const storedActiveAccountId = accounts.find((account) => account.isActive)?.id ?? null;
   const currentAuth = await api.readAuthJson().catch(() => null);
@@ -41,7 +46,10 @@ export async function resolveCurrentAuthState(accounts: Account[]): Promise<Curr
   };
 }
 
-export async function hydrateAccounts(accounts: Account[]): Promise<Account[]> {
+export async function hydrateAccounts(
+  accounts: Account[],
+  options: HydrateAccountsOptions = {},
+): Promise<Account[]> {
   const currentAuthState = await resolveCurrentAuthState(accounts);
   const { activeAccountId, preserveStoredActive } = currentAuthState;
   const activeSessionInfo = activeAccountId
@@ -50,29 +58,40 @@ export async function hydrateAccounts(accounts: Account[]): Promise<Account[]> {
 
   return Promise.all(
     accounts.map(async (account) => {
-      const rateLimitResult = await api
-        .readAccountRateLimits(account.id)
-        .then((result) => ({
-          rateLimits: result.rateLimits ?? null,
-          rateLimitsError:
-            result.accountStatus === "invalid"
-              ? result.accountStatusReason ?? "账号已失效或不可用"
-              : null,
-          accountStatus:
-            result.accountStatus ?? (result.rateLimits ? "available" : "unknown"),
-          accountStatusReason: result.accountStatusReason ?? null,
-        }))
-        .catch((error: unknown) => ({
-          rateLimits: null,
-          rateLimitsError: error instanceof Error ? error.message : String(error),
-          accountStatus: "unknown" as const,
-          accountStatusReason: null,
-        }));
       const isActive = preserveStoredActive
         ? account.isActive
         : activeAccountId
           ? account.id === activeAccountId
           : false;
+      const shouldRefreshRateLimits =
+        options.refreshAllRateLimits === true ||
+        isActive ||
+        options.refreshRateLimitAccountIds?.has(account.id) === true;
+      const rateLimitResult = shouldRefreshRateLimits
+        ? await api
+            .readAccountRateLimits(account.id)
+            .then((result) => ({
+              rateLimits: result.rateLimits ?? null,
+              rateLimitsError:
+                result.accountStatus === "invalid"
+                  ? result.accountStatusReason ?? "账号已失效或不可用"
+                  : null,
+              accountStatus:
+                result.accountStatus ?? (result.rateLimits ? "available" : "unknown"),
+              accountStatusReason: result.accountStatusReason ?? null,
+            }))
+            .catch((error: unknown) => ({
+              rateLimits: null,
+              rateLimitsError: error instanceof Error ? error.message : String(error),
+              accountStatus: "unknown" as const,
+              accountStatusReason: null,
+            }))
+        : {
+            rateLimits: account.rateLimits ?? null,
+            rateLimitsError: account.rateLimitsError ?? null,
+            accountStatus: account.accountStatus ?? (account.rateLimits ? "available" : "unknown"),
+            accountStatusReason: account.accountStatusReason ?? null,
+          };
 
       if (isActive) {
         return {

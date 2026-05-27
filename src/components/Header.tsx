@@ -2,7 +2,9 @@ import React, { useRef } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useAccountStore } from "../store/accountStore";
 import { exportBackupBundle } from "../utils/backup";
+import { DISPLAY_TIME_ZONE_LABEL } from "../utils/dashboard";
 import { hoverLift, revealUp } from "../utils/motion";
+import packageJson from "../../package.json";
 
 interface HeaderProps {
   onImportConfig: (file: File) => Promise<void>;
@@ -15,7 +17,7 @@ interface HeaderProps {
   unmanagedCurrentAuthLabel: string | null;
 }
 
-const APP_VERSION = "v1.2.4";
+const APP_VERSION = `v${packageJson.version}`;
 
 const Header: React.FC<HeaderProps> = ({
   onImportConfig,
@@ -81,7 +83,7 @@ const Header: React.FC<HeaderProps> = ({
       className="sticky top-0 z-20 px-4 pb-3 pt-3 sm:px-6 lg:px-8"
       {...revealUp(prefersReducedMotion, 0)}
     >
-      <div className="toolbar-shell mx-auto w-full max-w-[1500px] rounded-[28px] px-4 py-3.5 sm:px-5">
+      <div className="toolbar-shell mx-auto w-full max-w-[1320px] rounded-[26px] px-4 py-3 sm:px-5">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-3 xl:flex-row xl:items-center xl:gap-5">
             <div className="flex min-w-0 items-center gap-3">
@@ -105,6 +107,9 @@ const Header: React.FC<HeaderProps> = ({
                   </h1>
                   <span className="rounded-full border border-white/75 bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
                     {APP_VERSION}
+                  </span>
+                  <span className="rounded-full border border-slate-200/70 bg-slate-50/70 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+                    时间 {DISPLAY_TIME_ZONE_LABEL}
                   </span>
                 </div>
                 <p className="mt-0.5 truncate text-[13px] text-slate-500">{subtitle}</p>

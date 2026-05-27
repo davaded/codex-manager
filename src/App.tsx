@@ -19,7 +19,11 @@ import {
   formatAuthIdentityLabel,
   parseAuthIdentity,
 } from "./utils/auth";
-import { getAccountStatusReason, getBestQuotaAccount, isAccountInvalid } from "./utils/dashboard";
+import {
+  getAccountStatusReason,
+  getSmartSwitchDecision,
+  isAccountInvalid,
+} from "./utils/dashboard";
 import { useAccountSwitch } from "./hooks/useAccountSwitch";
 import { Account } from "./types";
 import { MOTION_EASE, revealUp } from "./utils/motion";
@@ -28,6 +32,10 @@ type ConfirmState =
   | { kind: "delete"; accountId: string }
   | { kind: "switch"; account: Account }
   | null;
+
+function formatRestartTargets(targets: string[]): string {
+  return targets.length <= 1 ? targets.join("") : targets.join(" 和 ");
+}
 
 const App: React.FC = () => {
   const {
@@ -60,6 +68,23 @@ const App: React.FC = () => {
     (new URLSearchParams(window.location.search).get("tray") === "1" ||
       window.location.hash === "#tray");
 
+  const getEnabledRestartTargets = () => {
+    const targets: string[] = [];
+    if (
+      settings.autoRestartCodexAfterSwitch &&
+      platformCapabilities?.supportsAutoRestartCodexDesktop === true
+    ) {
+      targets.push("Codex");
+    }
+    if (
+      settings.autoRestartVscodeAfterSwitch &&
+      platformCapabilities?.supportsAutoRestartVscode === true
+    ) {
+      targets.push("VSCode");
+    }
+    return targets;
+  };
+
   const executeSwitch = async (account: Account) => {
     await switchAccount(account);
   };
@@ -69,11 +94,9 @@ const App: React.FC = () => {
       return;
     }
 
-    const canAutoRestartCodex =
-      settings.autoRestartCodexAfterSwitch &&
-      platformCapabilities?.supportsAutoRestartCodexDesktop === true;
+    const restartTargets = getEnabledRestartTargets();
 
-    if (canAutoRestartCodex) {
+    if (restartTargets.length > 0) {
       setConfirmState({ kind: "switch", account });
       return;
     }
@@ -93,7 +116,7 @@ const App: React.FC = () => {
     setIsRefreshing(true);
     try {
       const store = await api.loadAccounts();
-      const hydrated = await hydrateAccounts(store.accounts);
+      const hydrated = await hydrateAccounts(store.accounts, { refreshAllRateLimits: true });
       setAccounts(hydrated);
       const invalidAccounts = hydrated.filter((account) => isAccountInvalid(account));
       const rateLimitFailures = hydrated.filter(
@@ -144,7 +167,9 @@ const App: React.FC = () => {
 
     setRefreshingAccountIds((current) => [...current, accountId]);
     try {
-      const [hydrated] = await hydrateAccounts([target]);
+      const [hydrated] = await hydrateAccounts([target], {
+        refreshRateLimitAccountIds: new Set([accountId]),
+      });
       if (!hydrated) {
         throw new Error("未获取到账号数据");
       }
@@ -233,21 +258,22 @@ const App: React.FC = () => {
       const hydrated = await hydrateAccounts(accounts);
       await persistAccounts(hydrated);
       const invalidCount = hydrated.filter((account) => isAccountInvalid(account)).length;
+      const smartSwitchDecision = getSmartSwitchDecision(hydrated);
 
-      const bestAccount = getBestQuotaAccount(hydrated);
-      if (!bestAccount) {
+      if (smartSwitchDecision.status === "hold") {
+        showToast(`${smartSwitchDecision.activeAccount.displayName} 当前额度仍充足`);
+        return;
+      }
+
+      if (smartSwitchDecision.status !== "switch") {
         throw new Error(
           invalidCount > 0
             ? `当前没有可用账号，已检测到 ${invalidCount} 个失效账号`
             : "当前没有足够数据",
         );
       }
-      if (bestAccount.isActive) {
-        showToast(`${bestAccount.displayName} 已是当前最佳选择`);
-        return;
-      }
 
-      await requestSwitch(bestAccount);
+      await requestSwitch(smartSwitchDecision.targetAccount);
     } catch (error) {
       showToast(`智能切换失败 · ${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -401,6 +427,10 @@ const App: React.FC = () => {
     }
   };
 
+  const switchRestartTargets =
+    confirmState?.kind === "switch" ? getEnabledRestartTargets() : [];
+  const switchRestartTargetLabel = formatRestartTargets(switchRestartTargets) || "相关应用";
+
   return (
     <LazyMotion features={domAnimation}>
       <MotionConfig transition={{ duration: 0.72, ease: MOTION_EASE }}>
@@ -466,7 +496,7 @@ const App: React.FC = () => {
             className={
               isTrayMode
                 ? "h-full"
-                : "relative z-10 mx-auto w-full max-w-[1520px] overflow-auto px-4 pb-10 pt-1 sm:px-6 sm:pt-2 lg:px-8 lg:pb-14"
+                : "relative z-10 mx-auto w-full max-w-[1320px] overflow-auto px-4 pb-8 pt-1 sm:px-6 sm:pt-2 lg:px-7 lg:pb-12"
             }
           >
             {isTrayMode ? (
@@ -485,7 +515,6 @@ const App: React.FC = () => {
                       refreshingAccountIds={refreshingAccountIds}
                       onDelete={(id) => setConfirmState({ kind: "delete", accountId: id })}
                       onRefreshAccount={refreshAccount}
-                      onRefreshUsage={() => refreshAccounts(false)}
                       onRename={handleRename}
                       onSwitch={(account) => void requestSwitch(account)}
                     />
@@ -515,7 +544,7 @@ const App: React.FC = () => {
           {confirmState?.kind === "switch" && (
         <ConfirmDialog
           title="切换账户"
-          message={`切换到 ${confirmState.account.displayName} 后，Codex 会重新打开。当前桌面会话会中断。`}
+          message={`切换到 ${confirmState.account.displayName} 后，${switchRestartTargetLabel} 会重新打开。当前桌面会话会中断。`}
           confirmLabel="继续"
           tone="primary"
           onConfirm={() => void handleConfirmSwitch()}
