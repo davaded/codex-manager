@@ -213,25 +213,16 @@ Install dependencies:
 npm install
 ```
 
-Run Tauri in development:
+Command reference:
 
-```bash
-npm run tauri dev
-```
-
-Run the frontend only:
-
-```bash
-npm run dev
-```
-
-Build checks:
-
-```bash
-npm run build
-cd src-tauri
-cargo check
-```
+- `npm run tauri dev`: starts the full development environment, including Vite and the Tauri desktop app.
+- `npm run dev`: starts only the Vite web frontend.
+- `npm run test`: runs Vitest.
+- `npm run build`: runs TypeScript checks and builds the frontend assets.
+- `npm run tauri:build:windows`: creates the Windows NSIS installer.
+- `npm run tauri:build:macos`: creates the macOS DMG installer.
+- `npm run preview`: previews the frontend build output.
+- `npm run cli`: runs the local CLI entrypoint.
 
 ## Roadmap
 

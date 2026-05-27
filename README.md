@@ -213,25 +213,16 @@ npm link
 npm install
 ```
 
-启动 Tauri 开发环境：
+命令说明：
 
-```bash
-npm run tauri dev
-```
-
-只跑前端：
-
-```bash
-npm run dev
-```
-
-构建检查：
-
-```bash
-npm run build
-cd src-tauri
-cargo check
-```
+- `npm run tauri dev`：启动完整开发环境，包含 Vite 和 Tauri 桌面端。
+- `npm run dev`：仅启动 Vite Web 前端。
+- `npm run test`：运行 Vitest。
+- `npm run build`：执行 TypeScript 检查并构建前端产物。
+- `npm run tauri:build:windows`：生成 Windows NSIS 安装包。
+- `npm run tauri:build:macos`：生成 macOS DMG 安装包。
+- `npm run preview`：预览前端构建产物。
+- `npm run cli`：运行本地 CLI 入口。
 
 ## 路线图
 
