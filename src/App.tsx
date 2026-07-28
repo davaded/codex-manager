@@ -300,13 +300,17 @@ const App: React.FC = () => {
       await persistAccounts(nextAccounts);
 
       if (!silent) {
-        const parts = [
-          response.successCount > 0 ? `成功 ${response.successCount}` : null,
-          response.skippedCount > 0 ? `跳过 ${response.skippedCount}` : null,
-          response.errorCount > 0 ? `失败 ${response.errorCount}` : null,
-        ].filter((item): item is string => Boolean(item));
+        if (response.successCount === 0 && response.errorCount === 0 && response.skippedCount > 0) {
+          showToast("预热检查完成 · 当前账号本周窗口都已启动，暂时无需预热");
+        } else {
+          const parts = [
+            response.successCount > 0 ? `已启动 ${response.successCount}` : null,
+            response.skippedCount > 0 ? `无需预热 ${response.skippedCount}` : null,
+            response.errorCount > 0 ? `失败 ${response.errorCount}` : null,
+          ].filter((item): item is string => Boolean(item));
 
-        showToast(parts.length > 0 ? `预热完成 · ${parts.join("，")}` : "预热完成");
+          showToast(parts.length > 0 ? `预热完成 · ${parts.join("，")}` : "预热完成");
+        }
       }
 
       return true;

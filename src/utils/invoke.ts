@@ -22,6 +22,96 @@ const MOCK_CREDENTIALS_KEY = "codex-manager:mock-credentials";
 const MOCK_AUTH_KEY = "codex-manager:mock-auth";
 const MOCK_SETTINGS_KEY = "codex-manager:mock-settings";
 
+type WeeklyWindowState =
+  | { kind: "active"; usedPercent: number; resetsAt: number }
+  | {
+      kind: "inactive";
+      reason: "missing-window" | "missing-reset" | "expired" | "no-usage";
+    };
+
+function classifyWeeklyWindow(
+  rateLimits: GetAccountRateLimitsResponse["rateLimits"] | null | undefined,
+  nowSeconds: number,
+): WeeklyWindowState {
+  const window = rateLimits?.secondary;
+  if (!window) {
+    return { kind: "inactive", reason: "missing-window" };
+  }
+
+  if (typeof window.resetsAt !== "number") {
+    return { kind: "inactive", reason: "missing-reset" };
+  }
+
+  if (window.resetsAt <= nowSeconds) {
+    return { kind: "inactive", reason: "expired" };
+  }
+
+  if ((window.usedPercent ?? 0) <= 0) {
+    return { kind: "inactive", reason: "no-usage" };
+  }
+
+  return {
+    kind: "active",
+    usedPercent: window.usedPercent,
+    resetsAt: window.resetsAt,
+  };
+}
+
+function formatRemainingDuration(targetSeconds: number, nowSeconds: number): string {
+  const remainingSeconds = Math.max(0, targetSeconds - nowSeconds);
+  const days = Math.floor(remainingSeconds / (24 * 60 * 60));
+  const hours = Math.floor((remainingSeconds % (24 * 60 * 60)) / (60 * 60));
+  const minutes = Math.floor((remainingSeconds % (60 * 60)) / 60);
+
+  if (days > 0) {
+    return `约 ${days} 天 ${hours} 小时`;
+  }
+
+  if (hours > 0) {
+    return `约 ${hours} 小时 ${minutes} 分钟`;
+  }
+
+  return `约 ${Math.max(1, minutes)} 分钟`;
+}
+
+export function buildMockPreheatSkipMessage(
+  rateLimits: GetAccountRateLimitsResponse["rateLimits"] | null | undefined,
+  nowSeconds: number,
+): string {
+  const state = classifyWeeklyWindow(rateLimits, nowSeconds);
+  if (state.kind !== "active") {
+    return "当前周限窗口未激活，无法跳过预热";
+  }
+
+  return `周限窗口已在倒计时中（已用 ${state.usedPercent}% ，剩余${formatRemainingDuration(
+    state.resetsAt,
+    nowSeconds,
+  )}），跳过预热`;
+}
+
+export function buildMockPreheatSuccessMessage(
+  rateLimits: GetAccountRateLimitsResponse["rateLimits"] | null | undefined,
+  nowSeconds: number,
+): string {
+  const state = classifyWeeklyWindow(rateLimits, nowSeconds);
+  if (state.kind === "active") {
+    return `已发送轻量请求，周限倒计时已启动（当前 ${state.usedPercent}% ，剩余${formatRemainingDuration(
+      state.resetsAt,
+      nowSeconds,
+    )}）`;
+  }
+
+  switch (state.reason) {
+    case "missing-window":
+    case "missing-reset":
+      return "已发送轻量请求，但额度接口暂未返回完整周限信息";
+    case "expired":
+      return "已发送轻量请求，但返回的周限状态已过期，请稍后刷新确认";
+    case "no-usage":
+      return "已发送轻量请求，但周限暂未开始计时，请稍后刷新确认";
+  }
+}
+
 const demoAccounts: AccountsStore = {
   version: "1.0",
   accounts: [
@@ -457,14 +547,11 @@ const browserApi = {
         };
       }
 
-      if (
-        typeof account.rateLimits?.secondary?.resetsAt === "number" &&
-        account.rateLimits.secondary.resetsAt > nowSeconds
-      ) {
+      if (classifyWeeklyWindow(account.rateLimits, nowSeconds).kind === "active") {
         return {
           accountId: account.id,
           outcome: "skipped" as const,
-          message: "本周窗口已启动，跳过预热",
+          message: buildMockPreheatSkipMessage(account.rateLimits, nowSeconds),
           checkedAt: now,
           rateLimitResult: {
             rateLimits: account.rateLimits ?? null,
@@ -490,7 +577,7 @@ const browserApi = {
       return {
         accountId: account.id,
         outcome: "success" as const,
-        message: "已发送轻量请求，周限倒计时已启动",
+        message: buildMockPreheatSuccessMessage(nextRateLimits, nowSeconds),
         checkedAt: now,
         rateLimitResult: {
           rateLimits: nextRateLimits,

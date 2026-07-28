@@ -573,12 +573,112 @@ async fn load_account_auth(
 }
 
 fn weekly_window_is_active(response: &GetAccountRateLimitsResponse) -> bool {
-    response
+    matches!(
+        classify_weekly_window(response, chrono::Utc::now().timestamp()),
+        WeeklyWindowState::Active { .. }
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WeeklyWindowState {
+    Active { used_percent: i32, resets_at: i64 },
+    Inactive(WeeklyWindowInactiveReason),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WeeklyWindowInactiveReason {
+    MissingWindow,
+    MissingReset,
+    ResetExpired,
+    NoUsage,
+}
+
+fn classify_weekly_window(
+    response: &GetAccountRateLimitsResponse,
+    now_timestamp: i64,
+) -> WeeklyWindowState {
+    let Some(window) = response
         .rate_limits
         .as_ref()
         .and_then(|snapshot| snapshot.secondary.as_ref())
-        .and_then(|window| window.resets_at)
-        .is_some_and(|resets_at| resets_at > chrono::Utc::now().timestamp())
+    else {
+        return WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::MissingWindow);
+    };
+
+    let Some(resets_at) = window.resets_at else {
+        return WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::MissingReset);
+    };
+
+    if resets_at <= now_timestamp {
+        return WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::ResetExpired);
+    }
+
+    if window.used_percent <= 0 {
+        return WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::NoUsage);
+    }
+
+    WeeklyWindowState::Active {
+        used_percent: window.used_percent,
+        resets_at,
+    }
+}
+
+fn format_remaining_duration(target_timestamp: i64, now_timestamp: i64) -> String {
+    let remaining_seconds = (target_timestamp - now_timestamp).max(0);
+    let days = remaining_seconds / (24 * 60 * 60);
+    let hours = (remaining_seconds % (24 * 60 * 60)) / (60 * 60);
+    let minutes = (remaining_seconds % (60 * 60)) / 60;
+
+    if days > 0 {
+        format!("约 {} 天 {} 小时", days, hours)
+    } else if hours > 0 {
+        format!("约 {} 小时 {} 分钟", hours, minutes)
+    } else {
+        format!("约 {} 分钟", minutes.max(1))
+    }
+}
+
+fn preheat_skip_message(response: &GetAccountRateLimitsResponse, now_timestamp: i64) -> String {
+    match classify_weekly_window(response, now_timestamp) {
+        WeeklyWindowState::Active {
+            used_percent,
+            resets_at,
+        } => format!(
+            "周限窗口已在倒计时中（已用 {}%，剩余{}），跳过预热",
+            used_percent,
+            format_remaining_duration(resets_at, now_timestamp)
+        ),
+        WeeklyWindowState::Inactive(_) => "当前周限窗口未激活，无法跳过预热".to_string(),
+    }
+}
+
+fn preheat_success_message(
+    final_rate_limit_result: &Result<GetAccountRateLimitsResponse, String>,
+    now_timestamp: i64,
+) -> String {
+    match final_rate_limit_result {
+        Ok(result) => match classify_weekly_window(result, now_timestamp) {
+            WeeklyWindowState::Active {
+                used_percent,
+                resets_at,
+            } => format!(
+                "已发送轻量请求，周限倒计时已启动（当前 {}%，剩余{}）",
+                used_percent,
+                format_remaining_duration(resets_at, now_timestamp)
+            ),
+            WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::MissingWindow)
+            | WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::MissingReset) => {
+                "已发送轻量请求，但额度接口暂未返回完整周限信息".to_string()
+            }
+            WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::NoUsage) => {
+                "已发送轻量请求，但周限暂未开始计时，请稍后刷新确认".to_string()
+            }
+            WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::ResetExpired) => {
+                "已发送轻量请求，但返回的周限状态已过期，请稍后刷新确认".to_string()
+            }
+        },
+        Err(_) => "已发送轻量请求，但回读额度失败，请稍后刷新确认".to_string(),
+    }
 }
 
 async fn fetch_account_rate_limits_from_auth(
@@ -763,6 +863,7 @@ async fn preheat_single_account(
     account_id: String,
 ) -> PreheatAccountResult {
     let checked_at = chrono::Utc::now().to_rfc3339();
+    let now_timestamp = chrono::Utc::now().timestamp();
     let (credentials_path, mut auth) = match load_account_auth(app, &account_id).await {
         Ok(value) => value,
         Err(message) => {
@@ -797,7 +898,7 @@ async fn preheat_single_account(
             return preheat_result(
                 account_id,
                 AccountPreheatStatus::Skipped,
-                "本周窗口已启动，跳过预热",
+                preheat_skip_message(rate_limit_result, now_timestamp),
                 checked_at,
                 Some(rate_limit_result.clone()),
             );
@@ -904,21 +1005,15 @@ async fn preheat_single_account(
     }
 
     let final_rate_limit_result =
-        fetch_account_rate_limits_from_auth(client, &mut auth, &credentials_path).await.ok();
-    let message = match final_rate_limit_result.as_ref() {
-        Some(result) if weekly_window_is_active(result) => {
-            "已发送轻量请求，周限倒计时已启动".to_string()
-        }
-        Some(_) => "已发送轻量请求，等待额度接口同步".to_string(),
-        None => "已发送轻量请求，额度读取暂未同步".to_string(),
-    };
+        fetch_account_rate_limits_from_auth(client, &mut auth, &credentials_path).await;
+    let message = preheat_success_message(&final_rate_limit_result, now_timestamp);
 
     preheat_result(
         account_id,
         AccountPreheatStatus::Success,
         message,
         checked_at,
-        final_rate_limit_result.or_else(|| initial_rate_limit_result.ok()),
+        final_rate_limit_result.ok().or_else(|| initial_rate_limit_result.ok()),
     )
 }
 
@@ -965,4 +1060,83 @@ pub async fn preheat_accounts(app: AppHandle) -> Result<PreheatAccountsResponse,
         skipped_count,
         error_count,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        classify_weekly_window, preheat_skip_message, preheat_success_message,
+        weekly_window_is_active, WeeklyWindowInactiveReason, WeeklyWindowState,
+    };
+    use crate::models::{GetAccountRateLimitsResponse, RateLimitSnapshot, RateLimitWindow};
+
+    fn response_with_secondary(used_percent: i32, resets_at: Option<i64>) -> GetAccountRateLimitsResponse {
+        GetAccountRateLimitsResponse {
+            rate_limits: Some(RateLimitSnapshot {
+                limit_id: Some("codex".to_string()),
+                limit_name: None,
+                plan_type: Some("plus".to_string()),
+                credits: None,
+                primary: None,
+                secondary: Some(RateLimitWindow {
+                    used_percent,
+                    resets_at,
+                    window_duration_mins: Some(7 * 24 * 60),
+                }),
+            }),
+            rate_limits_by_limit_id: None,
+            account_status: None,
+            account_status_reason: None,
+        }
+    }
+
+    #[test]
+    fn weekly_window_requires_usage_and_future_reset() {
+        let now = chrono::Utc::now().timestamp();
+
+        assert!(!weekly_window_is_active(&response_with_secondary(0, Some(now + 3600))));
+        assert!(!weekly_window_is_active(&response_with_secondary(12, Some(now - 60))));
+        assert!(weekly_window_is_active(&response_with_secondary(12, Some(now + 3600))));
+    }
+
+    #[test]
+    fn weekly_window_reports_inactive_reasons() {
+        let now = chrono::Utc::now().timestamp();
+
+        assert_eq!(
+            classify_weekly_window(
+                &GetAccountRateLimitsResponse {
+                    rate_limits: None,
+                    rate_limits_by_limit_id: None,
+                    account_status: None,
+                    account_status_reason: None,
+                },
+                now
+            ),
+            WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::MissingWindow)
+        );
+        assert_eq!(
+            classify_weekly_window(&response_with_secondary(10, None), now),
+            WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::MissingReset)
+        );
+        assert_eq!(
+            classify_weekly_window(&response_with_secondary(0, Some(now + 600)), now),
+            WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::NoUsage)
+        );
+    }
+
+    #[test]
+    fn preheat_messages_explain_skip_and_unsynced_states() {
+        let now = chrono::Utc::now().timestamp();
+
+        let skipped = preheat_skip_message(&response_with_secondary(12, Some(now + 3600)), now);
+        assert!(skipped.contains("已用 12%"));
+        assert!(skipped.contains("跳过预热"));
+
+        let pending = preheat_success_message(&Ok(response_with_secondary(0, Some(now + 3600))), now);
+        assert!(pending.contains("暂未开始计时"));
+
+        let failed_readback = preheat_success_message(&Err("boom".to_string()), now);
+        assert!(failed_readback.contains("回读额度失败"));
+    }
 }

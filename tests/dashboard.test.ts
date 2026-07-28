@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   formatRelativeTime,
   getAccountInsight,
+  getAccountPreheatInsight,
   getBestQuotaAccount,
   getHourlyUsageEfficiency,
   getRecommendedAccountId,
+  hasActiveWeeklyWindow,
 } from "../src/utils/dashboard";
 import type { Account } from "../src/types";
 
@@ -198,5 +200,49 @@ describe("formatRelativeTime", () => {
   it("handles missing or invalid timestamps safely", () => {
     expect(formatRelativeTime(null)).toBe("暂无记录");
     expect(formatRelativeTime("invalid-date")).toBe("暂无记录");
+  });
+});
+
+describe("preheat insight", () => {
+  it("treats active weekly windows as no-preheat-needed instead of warning", () => {
+    const nowSeconds = Math.floor(new Date("2026-07-28T10:00:00Z").getTime() / 1000);
+    const account = createAccount({
+      lastPreheatAt: "2026-07-28T09:55:00Z",
+      preheatStatus: "skipped",
+      preheatMessage: "本周窗口已启动，跳过预热",
+      rateLimits: {
+        planType: "plus",
+        secondary: {
+          usedPercent: 12,
+          resetsAt: nowSeconds + 3600,
+        },
+      },
+    });
+
+    expect(hasActiveWeeklyWindow(account, nowSeconds)).toBe(true);
+
+    const insight = getAccountPreheatInsight(account);
+    expect(insight.label).toBe("无需预热");
+    expect(insight.tone).toBe("healthy");
+    expect(insight.detail).toContain("本周窗口已启动");
+  });
+
+  it("does not treat zero-usage weekly resets as active windows", () => {
+    const nowSeconds = Math.floor(new Date("2026-07-28T10:00:00Z").getTime() / 1000);
+    const account = createAccount({
+      preheatStatus: "skipped",
+      rateLimits: {
+        planType: "plus",
+        secondary: {
+          usedPercent: 0,
+          resetsAt: nowSeconds + 3600,
+        },
+      },
+    });
+
+    expect(hasActiveWeeklyWindow(account, nowSeconds)).toBe(false);
+
+    const insight = getAccountPreheatInsight(account);
+    expect(insight.label).toBe("已跳过");
   });
 });

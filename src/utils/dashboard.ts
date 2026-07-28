@@ -99,6 +99,19 @@ export function getAccountStatusReason(account: Account): string | null {
   return account.accountStatusReason ?? account.rateLimitsError ?? null;
 }
 
+export function hasActiveWeeklyWindow(account: Account, nowSeconds = Date.now() / 1000): boolean {
+  const secondary = account.rateLimits?.secondary;
+  if (!secondary) {
+    return false;
+  }
+
+  const usedPercent =
+    typeof secondary.usedPercent === "number" ? clamp(secondary.usedPercent, 0, 100) : 0;
+  const resetsAt = secondary.resetsAt;
+
+  return usedPercent > 0 && typeof resetsAt === "number" && resetsAt > nowSeconds;
+}
+
 function deriveRole(account: Account): Pick<AccountInsight, "roleLabel" | "roleTone"> {
   if (isAccountInvalid(account)) {
     return { roleLabel: "失效", roleTone: "invalid" };
@@ -340,9 +353,12 @@ export function getAccountPreheatInsight(account: Account): AccountPreheatInsigh
       };
     case "skipped":
       return {
-        label: "已跳过",
-        detail: `${account.preheatMessage ?? "当前无需预热"} · ${checkedLabel}`,
-        tone: "warning",
+        label: hasActiveWeeklyWindow(account) ? "无需预热" : "已跳过",
+        detail: `${
+          account.preheatMessage ??
+          (hasActiveWeeklyWindow(account) ? "本周窗口已启动，当前无需预热" : "当前已跳过")
+        } · ${checkedLabel}`,
+        tone: "healthy",
       };
     case "error":
       return {

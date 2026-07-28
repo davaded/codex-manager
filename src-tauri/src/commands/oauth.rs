@@ -14,13 +14,17 @@ use tauri_plugin_opener::OpenerExt;
 use tokio::sync::{oneshot, Mutex};
 
 use crate::commands::accounts;
-use crate::models::{AuthJson, AuthTokens, OAuthResult, TokenResponse};
+use crate::models::{AppSettings, AuthJson, AuthTokens, OAuthResult, TokenResponse};
 
 const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const AUTH_ENDPOINT: &str = "https://auth.openai.com/oauth/authorize";
 const TOKEN_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
 const REDIRECT_URI: &str = "http://localhost:1455/auth/callback";
 const CALLBACK_PORT: u16 = 1455;
+
+fn oauth_error(code: &str, message: impl Into<String>) -> String {
+    format!("[oauth:{code}] {}", message.into())
+}
 
 // ─── PKCE helpers ─────────────────────────────────────────────────────────────
 
@@ -124,7 +128,17 @@ async fn callback_handler(
 ) -> Html<String> {
     let error = params.get("error").cloned();
     if let Some(err) = error {
-        finish_flow(&state, Err(format!("OAuth error: {}", err))).await;
+        let error_description = params
+            .get("error_description")
+            .map(|value| value.replace('+', " "));
+        let message = match error_description {
+            Some(description) if !description.trim().is_empty() => format!(
+                "浏览器授权未完成（{err}）。如果你刚刚取消了登录或拒绝了授权，重新开始一次即可。详情：{}",
+                description.trim()
+            ),
+            _ => format!("浏览器授权未完成（{err}）。如果你刚刚取消了登录或拒绝了授权，重新开始一次即可。"),
+        };
+        finish_flow(&state, Err(oauth_error("browser_auth_error", message))).await;
         return Html("<h1>Authorization failed. You may close this window.</h1>".to_string());
     }
 
@@ -132,7 +146,14 @@ async fn callback_handler(
     let received_state = params.get("state").cloned().unwrap_or_default();
 
     if received_state != state.expected_state {
-        finish_flow(&state, Err("CSRF state mismatch".to_string())).await;
+        finish_flow(
+            &state,
+            Err(oauth_error(
+                "state_mismatch",
+                "授权回调校验失败，请重新开始一次登录流程。",
+            )),
+        )
+        .await;
         return Html("<h1>Security error. You may close this window.</h1>".to_string());
     }
 
@@ -149,15 +170,7 @@ async fn exchange_code(
     verifier: &str,
 ) -> Result<TokenResponse, String> {
     let settings = accounts::load_settings(app.clone()).await?;
-    let mut client_builder = reqwest::Client::builder();
-
-    if !settings.proxy_url.trim().is_empty() {
-        let proxy = reqwest::Proxy::all(settings.proxy_url.trim())
-            .map_err(|e| format!("Invalid proxy URL: {}", e))?;
-        client_builder = client_builder.proxy(proxy);
-    }
-
-    let client = client_builder.build().map_err(|e| e.to_string())?;
+    let client = build_oauth_http_client(&settings)?;
     let params = [
         ("grant_type", "authorization_code"),
         ("client_id", CLIENT_ID),
@@ -171,17 +184,134 @@ async fn exchange_code(
         .form(&params)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format_transport_error(&e, &settings))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Token exchange failed ({}): {}", status, body));
+        return Err(format_token_exchange_error(status, &body, &settings));
     }
 
     resp.json::<TokenResponse>()
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| oauth_error("token_parse_failed", format!("解析 token exchange 响应失败：{e}")))
+}
+
+fn build_oauth_http_client(settings: &AppSettings) -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder()
+        .user_agent("codex-manager/0.1")
+        .timeout(std::time::Duration::from_secs(18));
+
+    if !settings.proxy_url.trim().is_empty() {
+        let proxy = reqwest::Proxy::all(settings.proxy_url.trim())
+            .map_err(|e| {
+                oauth_error(
+                    "proxy_config",
+                    format!(
+                        "网络代理地址格式无效，请在设置 > 网络代理里检查后重试。当前值：{}。错误详情：{e}",
+                        settings.proxy_url.trim()
+                    ),
+                )
+            })?;
+        builder = builder.proxy(proxy);
+    }
+
+    builder
+        .build()
+        .map_err(|e| oauth_error("client_build_failed", format!("创建 OAuth HTTP 客户端失败：{e}")))
+}
+
+fn compact_error_text(body: &str, max_len: usize) -> String {
+    let compact = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.len() <= max_len {
+        compact
+    } else {
+        format!("{}...", &compact[..max_len])
+    }
+}
+
+fn extract_openai_error_details(body: &str) -> (Option<String>, Option<String>) {
+    let parsed = match serde_json::from_str::<serde_json::Value>(body) {
+        Ok(value) => value,
+        Err(_) => return (None, None),
+    };
+
+    let nested_error = parsed.get("error");
+    let error_code = nested_error
+        .and_then(|value| value.get("code"))
+        .and_then(|value| value.as_str())
+        .or_else(|| parsed.get("code").and_then(|value| value.as_str()))
+        .map(ToString::to_string);
+
+    let error_message = nested_error
+        .and_then(|value| value.get("message"))
+        .and_then(|value| value.as_str())
+        .or_else(|| parsed.get("message").and_then(|value| value.as_str()))
+        .or_else(|| parsed.get("error_description").and_then(|value| value.as_str()))
+        .or_else(|| nested_error.and_then(|value| value.as_str()))
+        .map(ToString::to_string);
+
+    (error_code, error_message)
+}
+
+fn format_transport_error(error: &reqwest::Error, settings: &AppSettings) -> String {
+    let proxy_hint = if settings.proxy_url.trim().is_empty() {
+        "当前未配置应用内代理；如果你的网络环境访问 OpenAI 需要代理，请先到设置 > 网络代理填写后重试。"
+    } else {
+        "请检查设置 > 网络代理是否可用，并确认应用后端和浏览器走的是同一条网络出口。"
+    };
+
+    if error.is_timeout() {
+        return oauth_error(
+            "network_timeout",
+            format!("连接 OpenAI 超时。{proxy_hint}"),
+        );
+    }
+
+    if error.is_connect() || error.is_request() {
+        return oauth_error(
+            "network_connect",
+            format!("应用无法连接 OpenAI 完成 token exchange。{proxy_hint} 原始错误：{error}"),
+        );
+    }
+
+    oauth_error(
+        "network_error",
+        format!("OAuth 请求失败：{error}"),
+    )
+}
+
+fn format_token_exchange_error(
+    status: reqwest::StatusCode,
+    body: &str,
+    settings: &AppSettings,
+) -> String {
+    let (error_code, openai_error_message) = extract_openai_error_details(body);
+    let error_message = openai_error_message
+        .unwrap_or_else(|| compact_error_text(body, 180));
+
+    if error_code.as_deref() == Some("unsupported_country_region_territory") {
+        let proxy_hint = if settings.proxy_url.trim().is_empty() {
+            "请在设置 > 网络代理里填写可用代理后重试。"
+        } else {
+            "请检查设置 > 网络代理是否可用，并确认应用后端和浏览器走的是同一条网络出口。"
+        };
+
+        return oauth_error(
+            "region_restricted",
+            format!(
+                "Token exchange failed ({status})：当前网络出口不受支持。浏览器完成授权只代表已拿到 code，应用后端还需要继续向 OpenAI 换 token。{proxy_hint} OpenAI 返回：{error_message}"
+            ),
+        );
+    }
+
+    oauth_error(
+        "token_exchange_failed",
+        format!(
+            "Token exchange failed ({status})：{}",
+            compact_error_text(&error_message, 220)
+        ),
+    )
 }
 
 // ─── Main OAuth command ───────────────────────────────────────────────────────
@@ -191,7 +321,10 @@ pub async fn start_oauth_flow(app: AppHandle) -> Result<OAuthResult, String> {
     {
         let manager = app.state::<OAuthFlowManager>();
         if manager.0.lock().await.is_some() {
-            return Err("已有一个授权流程正在进行".to_string());
+            return Err(oauth_error(
+                "flow_active",
+                "已有一个授权流程正在进行，请先完成或取消当前授权。",
+            ));
         }
     }
 
@@ -216,7 +349,12 @@ pub async fn start_oauth_flow(app: AppHandle) -> Result<OAuthResult, String> {
 
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", CALLBACK_PORT))
         .await
-        .map_err(|e| format!("Port {} already in use: {}", CALLBACK_PORT, e))?;
+        .map_err(|e| {
+            oauth_error(
+                "callback_port_in_use",
+                format!("本地回调端口 {} 已被占用，请关闭冲突进程后重试。详情：{}", CALLBACK_PORT, e),
+            )
+        })?;
 
     set_active_flow(&app, Some(callback_state.clone())).await;
 
@@ -244,7 +382,10 @@ pub async fn start_oauth_flow(app: AppHandle) -> Result<OAuthResult, String> {
         shutdown_flow(&cleanup_state).await;
         let _ = server.await;
         clear_active_flow(&app, &cleanup_state).await;
-        return Err(format!("Failed to open browser: {}", e));
+        return Err(oauth_error(
+            "open_browser_failed",
+            format!("无法自动打开浏览器，请检查系统默认浏览器设置后重试。详情：{e}"),
+        ));
     }
 
     // Wait for callback (5-minute timeout)
@@ -257,11 +398,14 @@ pub async fn start_oauth_flow(app: AppHandle) -> Result<OAuthResult, String> {
     clear_active_flow(&app, &cleanup_state).await;
 
     let (code, _) = callback_result
-        .map_err(|_| "OAuth timed out after 5 minutes".to_string())?
-        .map_err(|_| "OAuth channel closed unexpectedly".to_string())??;
+        .map_err(|_| oauth_error("timeout", "授权等待超时（5 分钟）。请重新开始，并在浏览器完成登录后尽快返回应用。"))?
+        .map_err(|_| oauth_error("channel_closed", "授权流程异常中断，请重新开始一次。"))??;
 
     if code.is_empty() {
-        return Err("OAuth callback received empty authorization code".to_string());
+        return Err(oauth_error(
+            "empty_code",
+            "浏览器已回调，但没有拿到有效授权码，请重新开始一次。",
+        ));
     }
 
     // Exchange code for tokens
@@ -287,6 +431,46 @@ pub async fn start_oauth_flow(app: AppHandle) -> Result<OAuthResult, String> {
         email,
         user_id,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_settings() -> AppSettings {
+        AppSettings {
+            auto_refresh_interval: 0,
+            auto_preheat_interval_hours: 0,
+            auto_restart_codex_after_switch: false,
+            theme: "system".to_string(),
+            proxy_url: String::new(),
+        }
+    }
+
+    #[test]
+    fn formats_region_restricted_error_with_machine_code() {
+        let message = format_token_exchange_error(
+            reqwest::StatusCode::FORBIDDEN,
+            r#"{"error":{"code":"unsupported_country_region_territory","message":"unsupported region"}}"#,
+            &empty_settings(),
+        );
+
+        assert!(message.starts_with("[oauth:region_restricted]"));
+        assert!(message.contains("网络出口不受支持"));
+    }
+
+    #[test]
+    fn formats_proxy_config_error_with_machine_code() {
+        let settings = AppSettings {
+            proxy_url: "not a url".to_string(),
+            ..empty_settings()
+        };
+
+        let message = build_oauth_http_client(&settings).unwrap_err();
+
+        assert!(message.starts_with("[oauth:proxy_config]"));
+        assert!(message.contains("网络代理地址格式无效"));
+    }
 }
 
 #[tauri::command]

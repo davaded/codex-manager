@@ -9,6 +9,7 @@ import {
   getAccountStatusReason,
   getAccountInsight,
   getRecommendedAccountId,
+  hasActiveWeeklyWindow,
   isAccountInvalid,
 } from "../utils/dashboard";
 import { revealUp } from "../utils/motion";
@@ -122,8 +123,7 @@ const AccountList: React.FC<AccountListProps> = ({
       return false;
     }
 
-    const resetsAt = account.rateLimits?.secondary?.resetsAt;
-    return typeof resetsAt === "number" && resetsAt * 1000 > Date.now();
+    return hasActiveWeeklyWindow(account);
   }).length;
 
   return (

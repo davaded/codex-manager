@@ -172,6 +172,10 @@ const SettingsModal: React.FC = () => {
               <label className="section-kicker tracking-[0.28em] text-slate-500">
                 网络代理
               </label>
+              <p className="mt-3 text-sm leading-6 text-slate-500">
+                这里的代理会用于应用内请求，包括 OAuth token exchange。
+                浏览器里看到“授权完成”并不代表应用端一定已经换到 token。
+              </p>
               <input
                 type="text"
                 value={settings.proxyUrl}
