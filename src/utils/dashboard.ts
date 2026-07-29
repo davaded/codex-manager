@@ -341,24 +341,58 @@ export function formatRelativeTime(iso: string | null): string {
   }
 }
 
-export function getAccountPreheatInsight(account: Account): AccountPreheatInsight {
+export function getAccountPreheatInsight(
+  account: Account,
+  nowSeconds = Date.now() / 1000,
+): AccountPreheatInsight {
   const checkedLabel = account.lastPreheatAt ? formatRelativeTime(account.lastPreheatAt) : "尚未执行";
+  const hasActiveWindow = hasActiveWeeklyWindow(account, nowSeconds);
+  const secondary = account.rateLimits?.secondary;
+  const hasExpiredWindow =
+    typeof secondary?.usedPercent === "number" &&
+    secondary.usedPercent > 0 &&
+    typeof secondary.resetsAt === "number" &&
+    secondary.resetsAt <= nowSeconds;
 
   switch (account.preheatStatus) {
     case "success":
+      if (!hasActiveWindow) {
+        if (hasExpiredWindow) {
+          return {
+            label: "需预热",
+            detail: `周限窗口已重置，可重新预热 · ${checkedLabel}`,
+            tone: "warning",
+          };
+        }
+
+        return {
+          label: "已请求",
+          detail: `待确认 · ${account.preheatMessage ?? "已发送轻量请求，等待周窗确认"} · ${checkedLabel}`,
+          tone: "warning",
+        };
+      }
+
       return {
         label: "预热完成",
         detail: `${account.preheatMessage ?? "已触发轻量请求"} · ${checkedLabel}`,
         tone: "healthy",
       };
     case "skipped":
+      if (hasExpiredWindow) {
+        return {
+          label: "需预热",
+          detail: `周限窗口已重置，可重新预热 · ${checkedLabel}`,
+          tone: "warning",
+        };
+      }
+
       return {
-        label: hasActiveWeeklyWindow(account) ? "无需预热" : "已跳过",
+        label: hasActiveWindow ? "无需预热" : "已跳过",
         detail: `${
           account.preheatMessage ??
-          (hasActiveWeeklyWindow(account) ? "本周窗口已启动，当前无需预热" : "当前已跳过")
+          (hasActiveWindow ? "本周窗口已启动，当前无需预热" : "当前已跳过")
         } · ${checkedLabel}`,
-        tone: "healthy",
+        tone: hasActiveWindow ? "healthy" : "warning",
       };
     case "error":
       return {

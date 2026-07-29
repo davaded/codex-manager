@@ -12,7 +12,11 @@ import Toast from "./components/Toast";
 import ConfirmDialog from "./components/ConfirmDialog";
 import { useAccountStore } from "./store/accountStore";
 import { api } from "./utils/invoke";
-import { hydrateAccounts, resolveCurrentAuthState } from "./utils/accounts";
+import {
+  applyPreheatResult,
+  hydrateAccounts,
+  resolveCurrentAuthState,
+} from "./utils/accounts";
 import { importBackupBundle } from "./utils/backup";
 import {
   findAccountForAuth,
@@ -279,22 +283,7 @@ const App: React.FC = () => {
           return account;
         }
 
-        const rateLimitResult = result.rateLimitResult;
-        return {
-          ...account,
-          lastPreheatAt: result.checkedAt,
-          preheatStatus: result.outcome,
-          preheatMessage: result.message,
-          rateLimits: rateLimitResult?.rateLimits ?? account.rateLimits ?? null,
-          rateLimitsError:
-            rateLimitResult?.accountStatus === "invalid"
-              ? rateLimitResult.accountStatusReason ?? "账号已失效或不可用"
-              : null,
-          accountStatus:
-            rateLimitResult?.accountStatus ??
-            (rateLimitResult?.rateLimits ? "available" : account.accountStatus ?? "unknown"),
-          accountStatusReason: rateLimitResult?.accountStatusReason ?? null,
-        };
+        return applyPreheatResult(account, result);
       });
 
       await persistAccounts(nextAccounts);
@@ -304,7 +293,7 @@ const App: React.FC = () => {
           showToast("预热检查完成 · 当前账号本周窗口都已启动，暂时无需预热");
         } else {
           const parts = [
-            response.successCount > 0 ? `已启动 ${response.successCount}` : null,
+            response.successCount > 0 ? `已请求 ${response.successCount}` : null,
             response.skippedCount > 0 ? `无需预热 ${response.skippedCount}` : null,
             response.errorCount > 0 ? `失败 ${response.errorCount}` : null,
           ].filter((item): item is string => Boolean(item));

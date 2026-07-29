@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useAccountStore } from "../store/accountStore";
 import { api } from "../utils/invoke";
@@ -6,6 +6,7 @@ import { Account } from "../types";
 import { hydrateAccounts } from "../utils/accounts";
 
 type OAuthErrorKind =
+  | "cancelled"
   | "flow_active"
   | "callback_port_in_use"
   | "open_browser_failed"
@@ -32,16 +33,68 @@ interface OAuthGuidance {
   canOpenProxySettings: boolean;
 }
 
+export interface OAuthAttempt {
+  id: number;
+  cancelled: boolean;
+}
+
+export function isOauthAttemptActive(
+  activeAttempt: OAuthAttempt | null,
+  attempt: OAuthAttempt,
+  isMounted: boolean,
+): boolean {
+  return isMounted && activeAttempt === attempt && !attempt.cancelled;
+}
+
+export function isOauthCancelledError(message: string): boolean {
+  const trimmedMessage = message.trim();
+  const match = trimmedMessage.match(/^\[oauth:([a-z_]+)\](?:\s.*)?$/i);
+
+  return (
+    match?.[1].toLowerCase() === "cancelled" ||
+    trimmedMessage === "OAuth flow cancelled by user"
+  );
+}
+
 const AddAccountModal: React.FC = () => {
   const { setAddModalOpen, setSettingsOpen, accounts, setAccounts, showToast } = useAccountStore();
   const [loading, setLoading] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [oauthGuidance, setOauthGuidance] = useState<OAuthGuidance | null>(null);
   const isMountedRef = useRef(true);
+  const activeAttemptRef = useRef<OAuthAttempt | null>(null);
+  const nextAttemptIdRef = useRef(0);
+
+  const cancelActiveOauthAttempt = useCallback(() => {
+    const attempt = activeAttemptRef.current;
+    if (!attempt) {
+      return;
+    }
+
+    attempt.cancelled = true;
+    activeAttemptRef.current = null;
+    void api.cancelOauthFlow().catch(() => {
+      // The local attempt is already cancelled; transport errors cannot revive it.
+    });
+  }, []);
+
+  const handleCancel = useCallback(() => {
+    cancelActiveOauthAttempt();
+    if (isMountedRef.current) {
+      setAddModalOpen(false);
+    }
+  }, [cancelActiveOauthAttempt, setAddModalOpen]);
 
   useEffect(() => {
     isMountedRef.current = true;
 
+    return () => {
+      isMountedRef.current = false;
+      cancelActiveOauthAttempt();
+    };
+  }, [cancelActiveOauthAttempt]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         void handleCancel();
@@ -52,12 +105,8 @@ const AddAccountModal: React.FC = () => {
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      isMountedRef.current = false;
     };
-  }, []);
-
-  const isOauthCancelledError = (message: string) =>
-    /cancelled|canceled|取消/i.test(message);
+  }, [handleCancel]);
 
   const parseOauthGuidance = (rawMessage: string): OAuthGuidance => {
     const match = rawMessage.match(/^\[oauth:([a-z_]+)\]\s*(.*)$/i);
@@ -257,32 +306,37 @@ const AddAccountModal: React.FC = () => {
     }
   };
 
-  const handleCancel = async () => {
-    if (isMountedRef.current) {
-      setAddModalOpen(false);
-    }
-
-    if (loading) {
-      void api.cancelOauthFlow().catch(() => {
-        // The modal is already closed, so ignore cancellation transport errors here.
-      });
-    }
-  };
-
   const handleAdd = async () => {
+    if (activeAttemptRef.current) {
+      return;
+    }
+
     if (!displayName.trim()) {
       showToast("请输入名称");
       return;
     }
 
+    const attempt: OAuthAttempt = {
+      id: ++nextAttemptIdRef.current,
+      cancelled: false,
+    };
+    const accountDisplayName = displayName.trim();
+    activeAttemptRef.current = attempt;
     setOauthGuidance(null);
     setLoading(true);
+
+    const canContinue = () =>
+      isOauthAttemptActive(activeAttemptRef.current, attempt, isMountedRef.current);
+
     try {
       const result = await api.startOauthFlow();
+      if (!canContinue()) {
+        return;
+      }
 
       const newAccount: Account = {
         id: uuidv4(),
-        displayName: displayName.trim(),
+        displayName: accountDisplayName,
         email: result.email,
         userId: result.userId,
         isActive: false,
@@ -292,15 +346,30 @@ const AddAccountModal: React.FC = () => {
       };
 
       await api.saveAccountCredentials(newAccount.id, result.authJson);
-      const next = await hydrateAccounts([...accounts, newAccount]);
-      setAccounts(next);
-      await api.saveAccounts({ version: "1.0", accounts: next });
-
-      showToast("已添加账户");
-      if (isMountedRef.current) {
-        setAddModalOpen(false);
+      if (!canContinue()) {
+        return;
       }
+
+      const next = await hydrateAccounts([...accounts, newAccount]);
+      if (!canContinue()) {
+        return;
+      }
+
+      await api.saveAccounts({ version: "1.0", accounts: next });
+      if (!canContinue()) {
+        return;
+      }
+
+      setAccounts(next);
+      showToast("已添加账户");
+      activeAttemptRef.current = null;
+      setLoading(false);
+      setAddModalOpen(false);
     } catch (err: unknown) {
+      if (!canContinue()) {
+        return;
+      }
+
       const message = err instanceof Error ? err.message : String(err);
       if (!isOauthCancelledError(message)) {
         const guidance = parseOauthGuidance(message);
@@ -308,8 +377,11 @@ const AddAccountModal: React.FC = () => {
         showToast(`添加失败 · ${guidance.title}`);
       }
     } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
+      if (activeAttemptRef.current === attempt) {
+        activeAttemptRef.current = null;
+        if (isMountedRef.current && !attempt.cancelled) {
+          setLoading(false);
+        }
       }
     }
   };
@@ -388,15 +460,23 @@ const AddAccountModal: React.FC = () => {
               <input
                 type="text"
                 value={displayName}
+                disabled={loading}
                 onChange={(e) => {
                   setDisplayName(e.target.value);
                   if (oauthGuidance) {
                     setOauthGuidance(null);
                   }
                 }}
-                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || activeAttemptRef.current) {
+                    return;
+                  }
+
+                  e.preventDefault();
+                  void handleAdd();
+                }}
                 placeholder="例如：工作账号（主）"
-                className="mt-3 w-full rounded-[22px] border border-slate-200/90 bg-white/84 px-4 py-3.5 text-base text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-sky-300 focus:bg-white focus:ring-4 focus:ring-sky-100"
+                className="mt-3 w-full rounded-[22px] border border-slate-200/90 bg-white/84 px-4 py-3.5 text-base text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-sky-300 focus:bg-white focus:ring-4 focus:ring-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
                 autoFocus
               />
             </div>
@@ -462,7 +542,7 @@ const AddAccountModal: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={handleAdd}
+                onClick={() => void handleAdd()}
                 disabled={loading}
                 className="flex items-center gap-2 rounded-full bg-[linear-gradient(160deg,#07111f_0%,#163a72_58%,#3b82f6_100%)] px-5 py-3 text-sm font-semibold text-white shadow-[0_20px_38px_-22px_rgba(15,23,42,0.86)] transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
               >

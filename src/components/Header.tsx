@@ -1,5 +1,6 @@
 import React, { useRef } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import packageMetadata from "../../package.json";
 import { useAccountStore } from "../store/accountStore";
 import { exportBackupBundle } from "../utils/backup";
 import { hoverLift, revealUp } from "../utils/motion";
@@ -15,7 +16,7 @@ interface HeaderProps {
   unmanagedCurrentAuthLabel: string | null;
 }
 
-const APP_VERSION = "v1.2.4";
+const APP_VERSION = `v${packageMetadata.version}`;
 
 const Header: React.FC<HeaderProps> = ({
   onImportConfig,

@@ -213,7 +213,10 @@
 
   .dialog-shell {
     position: relative;
-    overflow: hidden;
+    max-height: calc(100dvh - 2rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     background:
       linear-gradient(180deg, rgba(255,255,255,0.99), rgba(255,249,242,0.96)),
       rgba(255,255,255,0.98);

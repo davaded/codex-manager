@@ -112,6 +112,20 @@ export function buildMockPreheatSuccessMessage(
   }
 }
 
+export function buildMockPreheatedRateLimits(
+  rateLimits: GetAccountRateLimitsResponse["rateLimits"] | null | undefined,
+  nowSeconds: number,
+): NonNullable<GetAccountRateLimitsResponse["rateLimits"]> {
+  return {
+    ...rateLimits,
+    secondary: {
+      usedPercent: 1,
+      windowDurationMins: 7 * 24 * 60,
+      resetsAt: nowSeconds + 7 * 24 * 60 * 60,
+    },
+  };
+}
+
 const demoAccounts: AccountsStore = {
   version: "1.0",
   accounts: [
@@ -565,14 +579,7 @@ const browserApi = {
         };
       }
 
-      const nextRateLimits = {
-        ...account.rateLimits,
-        secondary: {
-          usedPercent: Math.max(1, account.rateLimits?.secondary?.usedPercent ?? 1),
-          windowDurationMins: 7 * 24 * 60,
-          resetsAt: nowSeconds + 7 * 24 * 60 * 60,
-        },
-      };
+      const nextRateLimits = buildMockPreheatedRateLimits(account.rateLimits, nowSeconds);
 
       return {
         accountId: account.id,

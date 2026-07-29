@@ -204,6 +204,54 @@ describe("formatRelativeTime", () => {
 });
 
 describe("preheat insight", () => {
+  it("shows confirmed success only while the weekly window is active", () => {
+    const nowSeconds = Math.floor(new Date("2026-07-28T10:00:00Z").getTime() / 1000);
+    const account = createAccount({
+      lastPreheatAt: "2026-07-28T09:55:00Z",
+      preheatStatus: "success",
+      preheatMessage: "已发送轻量请求，周限倒计时已启动",
+      rateLimits: {
+        planType: "plus",
+        secondary: {
+          usedPercent: 0.1,
+          resetsAt: nowSeconds + 60,
+        },
+      },
+    });
+
+    expect(getAccountPreheatInsight(account, nowSeconds)).toMatchObject({
+      label: "预热完成",
+      tone: "healthy",
+    });
+    expect(hasActiveWeeklyWindow(account, nowSeconds + 60)).toBe(false);
+    expect(getAccountPreheatInsight(account, nowSeconds + 60)).toMatchObject({
+      label: "需预热",
+      tone: "warning",
+    });
+  });
+
+  it("keeps backend detail when a successful request still needs confirmation", () => {
+    const nowSeconds = Math.floor(new Date("2026-07-28T10:00:00Z").getTime() / 1000);
+    const account = createAccount({
+      lastPreheatAt: "2026-07-28T09:55:00Z",
+      preheatStatus: "success",
+      preheatMessage: "已发送轻量请求，但周限暂未开始计时，请稍后刷新确认",
+      rateLimits: {
+        planType: "plus",
+        secondary: {
+          usedPercent: 0,
+          resetsAt: nowSeconds + 3600,
+        },
+      },
+    });
+
+    const insight = getAccountPreheatInsight(account, nowSeconds);
+    expect(insight.label).toBe("已请求");
+    expect(insight.tone).toBe("warning");
+    expect(insight.detail).toContain("待确认");
+    expect(insight.detail).toContain(account.preheatMessage);
+  });
+
   it("treats active weekly windows as no-preheat-needed instead of warning", () => {
     const nowSeconds = Math.floor(new Date("2026-07-28T10:00:00Z").getTime() / 1000);
     const account = createAccount({
@@ -221,10 +269,14 @@ describe("preheat insight", () => {
 
     expect(hasActiveWeeklyWindow(account, nowSeconds)).toBe(true);
 
-    const insight = getAccountPreheatInsight(account);
+    const insight = getAccountPreheatInsight(account, nowSeconds);
     expect(insight.label).toBe("无需预热");
     expect(insight.tone).toBe("healthy");
     expect(insight.detail).toContain("本周窗口已启动");
+    expect(getAccountPreheatInsight(account, nowSeconds + 3600)).toMatchObject({
+      label: "需预热",
+      tone: "warning",
+    });
   });
 
   it("does not treat zero-usage weekly resets as active windows", () => {
@@ -242,7 +294,7 @@ describe("preheat insight", () => {
 
     expect(hasActiveWeeklyWindow(account, nowSeconds)).toBe(false);
 
-    const insight = getAccountPreheatInsight(account);
+    const insight = getAccountPreheatInsight(account, nowSeconds);
     expect(insight.label).toBe("已跳过");
   });
 });

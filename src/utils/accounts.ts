@@ -1,4 +1,4 @@
-import { Account } from "../types";
+import { Account, PreheatAccountResult } from "../types";
 import { api } from "./invoke";
 import {
   ParsedAuthIdentity,
@@ -11,6 +11,38 @@ export interface CurrentAuthState {
   activeAccountId: string | null;
   unmanagedIdentity: ParsedAuthIdentity | null;
   preserveStoredActive: boolean;
+}
+
+export function applyPreheatResult(
+  account: Account,
+  result: PreheatAccountResult,
+): Account {
+  const updatedAccount: Account = {
+    ...account,
+    lastPreheatAt: result.checkedAt,
+    preheatStatus: result.outcome,
+    preheatMessage: result.message,
+  };
+
+  if (result.rateLimitResult == null) {
+    return updatedAccount;
+  }
+
+  const rateLimitResult = result.rateLimitResult;
+  const isInvalid = rateLimitResult.accountStatus === "invalid";
+  return {
+    ...updatedAccount,
+    rateLimits: isInvalid
+      ? null
+      : rateLimitResult.rateLimits ?? account.rateLimits ?? null,
+    rateLimitsError: isInvalid
+      ? rateLimitResult.accountStatusReason ?? "账号已失效或不可用"
+      : null,
+    accountStatus:
+      rateLimitResult.accountStatus ??
+      (rateLimitResult.rateLimits ? "available" : account.accountStatus ?? "unknown"),
+    accountStatusReason: rateLimitResult.accountStatusReason ?? null,
+  };
 }
 
 export async function resolveCurrentAuthState(accounts: Account[]): Promise<CurrentAuthState> {

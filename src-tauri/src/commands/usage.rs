@@ -192,9 +192,13 @@ fn resolve_responses_urls() -> Vec<String> {
 
     if let Some(origin) = normalized.strip_suffix(BACKEND_API_PREFIX) {
         candidates.push(format!("{normalized}{CODEX_RESPONSES_PATH}"));
-        candidates.push(format!("{origin}{BACKEND_API_PREFIX}{CODEX_RESPONSES_PATH}"));
+        candidates.push(format!(
+            "{origin}{BACKEND_API_PREFIX}{CODEX_RESPONSES_PATH}"
+        ));
     } else {
-        candidates.push(format!("{normalized}{BACKEND_API_PREFIX}{CODEX_RESPONSES_PATH}"));
+        candidates.push(format!(
+            "{normalized}{BACKEND_API_PREFIX}{CODEX_RESPONSES_PATH}"
+        ));
         candidates.push(format!("{normalized}{CODEX_RESPONSES_PATH}"));
     }
 
@@ -285,10 +289,10 @@ fn format_reqwest_error(err: &reqwest::Error) -> String {
 
 fn truncate_for_error(body: &str, max_len: usize) -> String {
     let compact = body.split_whitespace().collect::<Vec<_>>().join(" ");
-    if compact.len() <= max_len {
+    if compact.chars().count() <= max_len {
         compact
     } else {
-        format!("{}...", &compact[..max_len])
+        format!("{}...", compact.chars().take(max_len).collect::<String>())
     }
 }
 
@@ -572,16 +576,16 @@ async fn load_account_auth(
     Ok((path, auth))
 }
 
-fn weekly_window_is_active(response: &GetAccountRateLimitsResponse) -> bool {
+fn weekly_window_is_active(response: &GetAccountRateLimitsResponse, now_timestamp: i64) -> bool {
     matches!(
-        classify_weekly_window(response, chrono::Utc::now().timestamp()),
+        classify_weekly_window(response, now_timestamp),
         WeeklyWindowState::Active { .. }
     )
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum WeeklyWindowState {
-    Active { used_percent: i32, resets_at: i64 },
+    Active { used_percent: f64, resets_at: i64 },
     Inactive(WeeklyWindowInactiveReason),
 }
 
@@ -613,7 +617,7 @@ fn classify_weekly_window(
         return WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::ResetExpired);
     }
 
-    if window.used_percent <= 0 {
+    if window.used_percent <= 0.0 {
         return WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::NoUsage);
     }
 
@@ -621,6 +625,17 @@ fn classify_weekly_window(
         used_percent: window.used_percent,
         resets_at,
     }
+}
+
+fn format_used_percent(used_percent: f64) -> String {
+    if used_percent > 0.0 && used_percent < 0.01 {
+        return "<0.01".to_string();
+    }
+
+    format!("{used_percent:.2}")
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_string()
 }
 
 fn format_remaining_duration(target_timestamp: i64, now_timestamp: i64) -> String {
@@ -645,7 +660,7 @@ fn preheat_skip_message(response: &GetAccountRateLimitsResponse, now_timestamp: 
             resets_at,
         } => format!(
             "周限窗口已在倒计时中（已用 {}%，剩余{}），跳过预热",
-            used_percent,
+            format_used_percent(used_percent),
             format_remaining_duration(resets_at, now_timestamp)
         ),
         WeeklyWindowState::Inactive(_) => "当前周限窗口未激活，无法跳过预热".to_string(),
@@ -663,7 +678,7 @@ fn preheat_success_message(
                 resets_at,
             } => format!(
                 "已发送轻量请求，周限倒计时已启动（当前 {}%，剩余{}）",
-                used_percent,
+                format_used_percent(used_percent),
                 format_remaining_duration(resets_at, now_timestamp)
             ),
             WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::MissingWindow)
@@ -679,6 +694,28 @@ fn preheat_success_message(
         },
         Err(_) => "已发送轻量请求，但回读额度失败，请稍后刷新确认".to_string(),
     }
+}
+
+fn final_preheat_outcome(
+    final_rate_limit_result: &Result<GetAccountRateLimitsResponse, String>,
+    now_timestamp: i64,
+) -> (AccountPreheatStatus, String) {
+    if let Ok(result) = final_rate_limit_result {
+        if result.account_status == Some(AccountRateLimitStatus::Invalid) {
+            return (
+                AccountPreheatStatus::Error,
+                result
+                    .account_status_reason
+                    .clone()
+                    .unwrap_or_else(|| "账号已失效或不可用".to_string()),
+            );
+        }
+    }
+
+    (
+        AccountPreheatStatus::Success,
+        preheat_success_message(final_rate_limit_result, now_timestamp),
+    )
 }
 
 async fn fetch_account_rate_limits_from_auth(
@@ -766,7 +803,7 @@ fn pick_nearest_window(windows: &[UsageWindowRaw], target_seconds: i64) -> Optio
 
 fn to_usage_window(window: UsageWindowRaw) -> RateLimitWindow {
     RateLimitWindow {
-        used_percent: window.used_percent.round() as i32,
+        used_percent: window.used_percent,
         resets_at: Some(window.reset_at),
         window_duration_mins: Some(window.limit_window_seconds / 60),
     }
@@ -863,7 +900,6 @@ async fn preheat_single_account(
     account_id: String,
 ) -> PreheatAccountResult {
     let checked_at = chrono::Utc::now().to_rfc3339();
-    let now_timestamp = chrono::Utc::now().timestamp();
     let (credentials_path, mut auth) = match load_account_auth(app, &account_id).await {
         Ok(value) => value,
         Err(message) => {
@@ -894,7 +930,8 @@ async fn preheat_single_account(
             );
         }
 
-        if weekly_window_is_active(rate_limit_result) {
+        let now_timestamp = chrono::Utc::now().timestamp();
+        if weekly_window_is_active(rate_limit_result, now_timestamp) {
             return preheat_result(
                 account_id,
                 AccountPreheatStatus::Skipped,
@@ -931,68 +968,67 @@ async fn preheat_single_account(
         }
     };
 
-    let request_result = match request_preheat_payload(client, &current_access_token, &resolved_account_id)
-        .await
-    {
-        Ok(()) => Ok(()),
-        Err(err) if err.should_refresh_auth => {
-            if let Err(refresh_err) = refresh_auth_tokens(client, &mut auth).await {
-                if refresh_err.invalid_account {
+    let request_result =
+        match request_preheat_payload(client, &current_access_token, &resolved_account_id).await {
+            Ok(()) => Ok(()),
+            Err(err) if err.should_refresh_auth => {
+                if let Err(refresh_err) = refresh_auth_tokens(client, &mut auth).await {
+                    if refresh_err.invalid_account {
+                        return preheat_result(
+                            account_id,
+                            AccountPreheatStatus::Error,
+                            invalid_account_reason(refresh_err.message),
+                            checked_at,
+                            initial_rate_limit_result.ok(),
+                        );
+                    }
                     return preheat_result(
                         account_id,
                         AccountPreheatStatus::Error,
-                        invalid_account_reason(refresh_err.message),
+                        refresh_err.message,
                         checked_at,
                         initial_rate_limit_result.ok(),
                     );
                 }
-                return preheat_result(
-                    account_id,
-                    AccountPreheatStatus::Error,
-                    refresh_err.message,
-                    checked_at,
-                    initial_rate_limit_result.ok(),
-                );
-            }
 
-            if let Err(message) = persist_auth(&credentials_path, &auth).await {
-                return preheat_result(
-                    account_id,
-                    AccountPreheatStatus::Error,
-                    message,
-                    checked_at,
-                    initial_rate_limit_result.ok(),
-                );
-            }
-
-            let refreshed_access_token = match access_token(&auth) {
-                Ok(token) => token.to_string(),
-                Err(message) => {
+                if let Err(message) = persist_auth(&credentials_path, &auth).await {
                     return preheat_result(
                         account_id,
                         AccountPreheatStatus::Error,
-                        invalid_account_reason(format!("{message}，请重新登录该账号。")),
+                        message,
                         checked_at,
                         initial_rate_limit_result.ok(),
                     );
                 }
-            };
 
-            request_preheat_payload(client, &refreshed_access_token, &resolved_account_id)
-                .await
-                .map_err(|err| err.message)
-        }
-        Err(err) if err.invalid_account => {
-            return preheat_result(
-                account_id,
-                AccountPreheatStatus::Error,
-                invalid_account_reason(err.message),
-                checked_at,
-                initial_rate_limit_result.ok(),
-            );
-        }
-        Err(err) => Err(err.message),
-    };
+                let refreshed_access_token = match access_token(&auth) {
+                    Ok(token) => token.to_string(),
+                    Err(message) => {
+                        return preheat_result(
+                            account_id,
+                            AccountPreheatStatus::Error,
+                            invalid_account_reason(format!("{message}，请重新登录该账号。")),
+                            checked_at,
+                            initial_rate_limit_result.ok(),
+                        );
+                    }
+                };
+
+                request_preheat_payload(client, &refreshed_access_token, &resolved_account_id)
+                    .await
+                    .map_err(|err| err.message)
+            }
+            Err(err) if err.invalid_account => {
+                return preheat_result(
+                    account_id,
+                    AccountPreheatStatus::Error,
+                    invalid_account_reason(err.message),
+                    checked_at,
+                    initial_rate_limit_result.ok(),
+                );
+            }
+            Err(err) => Err(err.message),
+        };
 
     if let Err(message) = request_result {
         return preheat_result(
@@ -1006,14 +1042,17 @@ async fn preheat_single_account(
 
     let final_rate_limit_result =
         fetch_account_rate_limits_from_auth(client, &mut auth, &credentials_path).await;
-    let message = preheat_success_message(&final_rate_limit_result, now_timestamp);
+    let final_now_timestamp = chrono::Utc::now().timestamp();
+    let (outcome, message) = final_preheat_outcome(&final_rate_limit_result, final_now_timestamp);
 
     preheat_result(
         account_id,
-        AccountPreheatStatus::Success,
+        outcome,
         message,
         checked_at,
-        final_rate_limit_result.ok().or_else(|| initial_rate_limit_result.ok()),
+        final_rate_limit_result
+            .ok()
+            .or_else(|| initial_rate_limit_result.ok()),
     )
 }
 
@@ -1065,12 +1104,19 @@ pub async fn preheat_accounts(app: AppHandle) -> Result<PreheatAccountsResponse,
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_weekly_window, preheat_skip_message, preheat_success_message,
-        weekly_window_is_active, WeeklyWindowInactiveReason, WeeklyWindowState,
+        classify_weekly_window, final_preheat_outcome, format_used_percent, preheat_skip_message,
+        preheat_success_message, to_usage_window, truncate_for_error, weekly_window_is_active,
+        UsageWindowRaw, WeeklyWindowInactiveReason, WeeklyWindowState,
     };
-    use crate::models::{GetAccountRateLimitsResponse, RateLimitSnapshot, RateLimitWindow};
+    use crate::models::{
+        AccountPreheatStatus, AccountRateLimitStatus, GetAccountRateLimitsResponse,
+        RateLimitSnapshot, RateLimitWindow,
+    };
 
-    fn response_with_secondary(used_percent: i32, resets_at: Option<i64>) -> GetAccountRateLimitsResponse {
+    fn response_with_secondary(
+        used_percent: f64,
+        resets_at: Option<i64>,
+    ) -> GetAccountRateLimitsResponse {
         GetAccountRateLimitsResponse {
             rate_limits: Some(RateLimitSnapshot {
                 limit_id: Some("codex".to_string()),
@@ -1094,9 +1140,18 @@ mod tests {
     fn weekly_window_requires_usage_and_future_reset() {
         let now = chrono::Utc::now().timestamp();
 
-        assert!(!weekly_window_is_active(&response_with_secondary(0, Some(now + 3600))));
-        assert!(!weekly_window_is_active(&response_with_secondary(12, Some(now - 60))));
-        assert!(weekly_window_is_active(&response_with_secondary(12, Some(now + 3600))));
+        assert!(!weekly_window_is_active(
+            &response_with_secondary(0.0, Some(now + 3600)),
+            now
+        ));
+        assert!(!weekly_window_is_active(
+            &response_with_secondary(12.0, Some(now - 60)),
+            now
+        ));
+        assert!(weekly_window_is_active(
+            &response_with_secondary(0.001, Some(now + 3600)),
+            now
+        ));
     }
 
     #[test]
@@ -1116,11 +1171,11 @@ mod tests {
             WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::MissingWindow)
         );
         assert_eq!(
-            classify_weekly_window(&response_with_secondary(10, None), now),
+            classify_weekly_window(&response_with_secondary(10.0, None), now),
             WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::MissingReset)
         );
         assert_eq!(
-            classify_weekly_window(&response_with_secondary(0, Some(now + 600)), now),
+            classify_weekly_window(&response_with_secondary(0.0, Some(now + 600)), now),
             WeeklyWindowState::Inactive(WeeklyWindowInactiveReason::NoUsage)
         );
     }
@@ -1129,14 +1184,66 @@ mod tests {
     fn preheat_messages_explain_skip_and_unsynced_states() {
         let now = chrono::Utc::now().timestamp();
 
-        let skipped = preheat_skip_message(&response_with_secondary(12, Some(now + 3600)), now);
+        let skipped = preheat_skip_message(&response_with_secondary(12.0, Some(now + 3600)), now);
         assert!(skipped.contains("已用 12%"));
         assert!(skipped.contains("跳过预热"));
 
-        let pending = preheat_success_message(&Ok(response_with_secondary(0, Some(now + 3600))), now);
+        let pending =
+            preheat_success_message(&Ok(response_with_secondary(0.0, Some(now + 3600))), now);
         assert!(pending.contains("暂未开始计时"));
 
         let failed_readback = preheat_success_message(&Err("boom".to_string()), now);
         assert!(failed_readback.contains("回读额度失败"));
+    }
+
+    #[test]
+    fn usage_window_preserves_fractional_percent_and_formats_it_cleanly() {
+        let window = to_usage_window(UsageWindowRaw {
+            used_percent: 0.25,
+            limit_window_seconds: 7 * 24 * 60 * 60,
+            reset_at: 1_800_000_000,
+        });
+
+        assert_eq!(window.used_percent, 0.25);
+        assert_eq!(format_used_percent(12.0), "12");
+        assert_eq!(format_used_percent(12.5), "12.5");
+        assert_eq!(format_used_percent(0.25), "0.25");
+        assert_eq!(format_used_percent(0.001), "<0.01");
+    }
+
+    #[test]
+    fn final_invalid_account_is_an_error() {
+        let result = Ok(GetAccountRateLimitsResponse {
+            rate_limits: None,
+            rate_limits_by_limit_id: None,
+            account_status: Some(AccountRateLimitStatus::Invalid),
+            account_status_reason: Some("登录已过期".to_string()),
+        });
+
+        let (outcome, message) = final_preheat_outcome(&result, 1_800_000_000);
+
+        assert_eq!(outcome, AccountPreheatStatus::Error);
+        assert_eq!(message, "登录已过期");
+    }
+
+    #[test]
+    fn final_outcome_classifies_window_at_final_timestamp() {
+        let result = Ok(response_with_secondary(0.25, Some(1_800_000_000)));
+
+        let (outcome, message) = final_preheat_outcome(&result, 1_800_000_001);
+
+        assert_eq!(outcome, AccountPreheatStatus::Success);
+        assert!(message.contains("周限状态已过期"));
+    }
+
+    #[test]
+    fn truncate_for_error_handles_long_chinese_text() {
+        let body = "预热请求返回了中文错误".repeat(40);
+
+        let truncated = truncate_for_error(&body, 160);
+
+        assert_eq!(truncated.chars().count(), 163);
+        assert!(truncated.ends_with("..."));
+        assert_eq!(truncated.trim_end_matches("...").chars().count(), 160);
     }
 }

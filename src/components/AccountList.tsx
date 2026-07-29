@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { useAccountStore } from "../store/accountStore";
 import { Account } from "../types";
@@ -39,6 +39,43 @@ const AccountList: React.FC<AccountListProps> = ({
 }) => {
   const { accounts, setAddModalOpen, switchState } = useAccountStore();
   const prefersReducedMotion = useReducedMotion() ?? false;
+  const [nowSeconds, setNowSeconds] = useState(() => Date.now() / 1000);
+
+  useEffect(() => {
+    const currentSeconds = Date.now() / 1000;
+    if (Math.abs(currentSeconds - nowSeconds) > 1) {
+      setNowSeconds(currentSeconds);
+      return undefined;
+    }
+
+    const nextResetAt = accounts.reduce<number | null>((nearest, account) => {
+      const secondary = account.rateLimits?.secondary;
+      const resetsAt = secondary?.resetsAt;
+      if (
+        isAccountInvalid(account) ||
+        typeof secondary?.usedPercent !== "number" ||
+        secondary.usedPercent <= 0 ||
+        typeof resetsAt !== "number" ||
+        resetsAt <= currentSeconds
+      ) {
+        return nearest;
+      }
+
+      return nearest === null || resetsAt < nearest ? resetsAt : nearest;
+    }, null);
+
+    if (nextResetAt === null) {
+      return undefined;
+    }
+
+    const delayMs = Math.min(
+      Math.max(0, (nextResetAt - currentSeconds) * 1000 + 50),
+      2_147_483_647,
+    );
+    const timer = window.setTimeout(() => setNowSeconds(Date.now() / 1000), delayMs);
+
+    return () => window.clearTimeout(timer);
+  }, [accounts, nowSeconds]);
 
   if (accounts.length === 0) {
     return <EmptyState onAdd={() => setAddModalOpen(true)} />;
@@ -79,7 +116,9 @@ const AccountList: React.FC<AccountListProps> = ({
     typeof featuredAccount?.rateLimits?.secondary?.usedPercent === "number"
       ? Math.max(0, Math.min(100, Math.round(featuredAccount.rateLimits.secondary.usedPercent)))
       : null;
-  const featuredPreheat = featuredAccount ? getAccountPreheatInsight(featuredAccount) : null;
+  const featuredPreheat = featuredAccount
+    ? getAccountPreheatInsight(featuredAccount, nowSeconds)
+    : null;
   const featuredInvalid = featuredAccount ? isAccountInvalid(featuredAccount) : false;
   const recommendedStandbyInsight = recommendedStandby ? getAccountInsight(recommendedStandby) : null;
   const recommendedStandbySummary =
@@ -123,7 +162,7 @@ const AccountList: React.FC<AccountListProps> = ({
       return false;
     }
 
-    return hasActiveWeeklyWindow(account);
+    return hasActiveWeeklyWindow(account, nowSeconds);
   }).length;
 
   return (
